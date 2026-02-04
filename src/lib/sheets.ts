@@ -18,7 +18,8 @@ export async function getSheetsClient(): Promise<sheets_v4.Sheets> {
     
     const auth = new google.auth.GoogleAuth({
       credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+      // Changed to read/write scope
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
     sheetsClient = google.sheets({ version: 'v4', auth });
@@ -77,6 +78,64 @@ export async function getAllSheetsData(
   return results;
 }
 
+// Update a single cell in a sheet
+export async function updateSheetCell(
+  spreadsheetId: string,
+  sheetName: string,
+  row: number,
+  column: string,
+  value: string | number
+): Promise<boolean> {
+  const sheets = await getSheetsClient();
+  
+  const range = `'${sheetName}'!${column}${row}`;
+  
+  try {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[value]],
+      },
+    });
+    return true;
+  } catch (error) {
+    console.error(`Failed to update cell ${range}:`, error);
+    return false;
+  }
+}
+
+// Find row by Job ID and update Cost
+export async function updateJobCost(
+  spreadsheetId: string,
+  sheetName: string,
+  jobId: string,
+  newCost: number
+): Promise<boolean> {
+  const sheets = await getSheetsClient();
+  
+  // First, get all data to find the row
+  const data = await getSheetData(spreadsheetId, sheetName);
+  
+  // Find the row with matching Job ID (column A)
+  let rowIndex = -1;
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][0] === jobId || data[i][0] === String(jobId)) {
+      rowIndex = i + 1; // Sheets are 1-indexed
+      break;
+    }
+  }
+  
+  if (rowIndex === -1) {
+    console.error(`Job ID ${jobId} not found in sheet ${sheetName}`);
+    return false;
+  }
+  
+  // Update the Cost column (column D)
+  return updateSheetCell(spreadsheetId, sheetName, rowIndex, 'D', newCost);
+}
+
 // Utility to parse currency strings like "£1,234.56" or "1234.56"
 export function parseCurrency(value: string | number | undefined): number {
   if (typeof value === 'number') return value;
@@ -99,4 +158,26 @@ export function parseTimeToHours(timeStr: string | undefined): number {
   const seconds = parseInt(parts[2], 10) || 0;
   
   return hours + minutes / 60 + seconds / 3600;
+}
+
+// Parse hours from various formats ("60 mins", "1:30:00", "2.5")
+export function parseHoursFlexible(value: string | undefined): number {
+  if (!value) return 0;
+  
+  const str = String(value).trim().toLowerCase();
+  
+  // Handle "X mins" format
+  if (str.includes('min')) {
+    const mins = parseFloat(str.replace(/[^0-9.]/g, ''));
+    return isNaN(mins) ? 0 : mins / 60;
+  }
+  
+  // Handle "HH:MM:SS" format
+  if (str.includes(':')) {
+    return parseTimeToHours(str);
+  }
+  
+  // Handle plain number (assume hours)
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : num;
 }

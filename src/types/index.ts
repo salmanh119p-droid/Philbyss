@@ -27,6 +27,13 @@ export interface InvoiceSummary {
     outstanding: number;
     count: number;
   }[];
+  byPM: {
+    email: string;
+    pmName: string; // Extracted from email or Name column
+    outstanding: number;
+    paid: number;
+    count: number;
+  }[];
 }
 
 // Engineer/Payslip Types
@@ -34,10 +41,12 @@ export interface EngineerJob {
   jobId: string;
   date: string;
   hours: string;
+  hoursDecimal: number; // Numeric hours for flagging
   cost: number;
   overtime: number;
   hourlyRate: number | null;
   engineerName: string;
+  rowIndex: number; // For updating the sheet
 }
 
 // Ticket/Fine Types
@@ -49,6 +58,7 @@ export interface Ticket {
   adminFee: number;
   datePaid: string;
   refNumber: string;
+  totalAmount: number; // The actual total from Admin Fee column
 }
 
 export interface EngineerSummary {

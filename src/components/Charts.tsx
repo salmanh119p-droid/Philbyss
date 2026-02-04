@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   PieChart,
   Pie,
@@ -90,7 +91,7 @@ export function InvoicePieChart({ paid, outstanding }: InvoicePieChartProps) {
   );
 }
 
-// Director Bar Chart
+// Director Bar Chart (keeping for backwards compatibility)
 interface DirectorChartProps {
   data: { director: string; outstanding: number; count: number }[];
 }
@@ -123,6 +124,86 @@ export function DirectorChart({ data }: DirectorChartProps) {
           <Bar dataKey="amount" name="Outstanding" fill="#f59e0b" radius={[0, 4, 4, 0]} />
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  );
+}
+
+// Property Manager Chart with expandable view
+interface PMChartProps {
+  data: { email: string; pmName: string; outstanding: number; paid: number; count: number }[];
+}
+
+export function PMChart({ data }: PMChartProps) {
+  const [showAll, setShowAll] = useState(false);
+  
+  const displayData = showAll ? data : data.slice(0, 10);
+  
+  const chartData = displayData.map((d) => ({
+    name: d.pmName.length > 15 ? d.pmName.substring(0, 15) + '...' : d.pmName,
+    fullName: d.pmName,
+    email: d.email,
+    amount: d.outstanding,
+    invoices: d.count,
+  }));
+
+  const chartHeight = showAll ? Math.max(400, data.length * 35) : 300;
+
+  return (
+    <div className={`card ${showAll ? 'col-span-2' : ''}`}>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="section-title mb-0">Outstanding by Property Manager</h3>
+          <p className="text-sm text-[var(--color-text-muted)]">
+            {showAll ? `Showing all ${data.length} PMs` : `Top 10 of ${data.length} PMs`}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAll(!showAll)}
+          className="btn btn-secondary text-sm"
+        >
+          {showAll ? 'Show Top 10' : `See All (${data.length})`}
+        </button>
+      </div>
+      <div style={{ height: chartHeight }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} layout="vertical" margin={{ left: 20, right: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
+            <XAxis 
+              type="number" 
+              stroke="var(--color-text-muted)"
+              tickFormatter={(value) => `£${(value / 1000).toFixed(0)}k`}
+            />
+            <YAxis 
+              type="category" 
+              dataKey="name" 
+              stroke="var(--color-text-muted)"
+              width={120}
+              tick={{ fontSize: 11 }}
+            />
+            <Tooltip 
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const data = payload[0].payload;
+                  return (
+                    <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-lg p-3 shadow-xl">
+                      <p className="text-sm font-medium text-[var(--color-text-primary)]">{data.fullName}</p>
+                      <p className="text-xs text-[var(--color-text-muted)] mb-2">{data.email}</p>
+                      <p className="text-sm" style={{ color: '#f59e0b' }}>
+                        Outstanding: £{data.amount.toLocaleString()}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-secondary)]">
+                        {data.invoices} invoices
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+            <Bar dataKey="amount" name="Outstanding" fill="#f59e0b" radius={[0, 4, 4, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }

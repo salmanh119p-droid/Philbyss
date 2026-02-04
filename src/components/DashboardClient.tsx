@@ -24,6 +24,7 @@ import EngineerTable from '@/components/EngineerTable';
 import {
   InvoicePieChart,
   DirectorChart,
+  PMChart,
   PayrollTimelineChart,
   TopEngineersChart,
 } from '@/components/Charts';
@@ -231,7 +232,7 @@ export default function DashboardClient() {
                 paid={data.invoices.totalPaid}
                 outstanding={data.invoices.totalOutstanding}
               />
-              <DirectorChart data={data.invoices.byDirector} />
+              <PMChart data={data.invoices.byPM} />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -285,7 +286,7 @@ export default function DashboardClient() {
                 paid={data.invoices.totalPaid}
                 outstanding={data.invoices.totalOutstanding}
               />
-              <DirectorChart data={data.invoices.byDirector} />
+              <PMChart data={data.invoices.byPM} />
             </div>
 
             {/* Client Table */}

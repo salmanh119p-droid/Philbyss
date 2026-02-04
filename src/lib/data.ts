@@ -11,7 +11,8 @@ import {
   getAllSheetsData, 
   getSheetData, 
   parseCurrency, 
-  parseTimeToHours 
+  parseTimeToHours,
+  parseHoursFlexible
 } from './sheets';
 
 const INVOICE_SHEET_ID = process.env.INVOICE_SHEET_ID!;
@@ -31,18 +32,18 @@ function getMonday(date: Date): Date {
   return d;
 }
 
-// Get the current 2-week pay period (Monday to Monday)
+// Get the current 2-week pay period (Monday to 2 weeks forward)
 function getPayPeriod(): { start: Date; end: Date } {
   const today = new Date();
   const currentMonday = getMonday(today);
   
-  // Go back 2 weeks for the start
-  const twoWeeksAgo = new Date(currentMonday);
-  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+  // Start from this Monday, end 2 weeks later
+  const twoWeeksLater = new Date(currentMonday);
+  twoWeeksLater.setDate(twoWeeksLater.getDate() + 14);
   
   return {
-    start: twoWeeksAgo,
-    end: currentMonday,
+    start: currentMonday,
+    end: twoWeeksLater,
   };
 }
 
@@ -50,16 +51,27 @@ function getPayPeriod(): { start: Date; end: Date } {
 function isWithinPayPeriod(dateStr: string, payPeriod: { start: Date; end: Date }): boolean {
   if (!dateStr) return false;
   
-  // Parse date in format "YYYY-MM-DD" or "DD/MM/YYYY"
+  // Parse date in various formats
   let date: Date;
-  if (dateStr.includes('-')) {
-    date = new Date(dateStr.split(' ')[0]); // Handle "2026-01-15 10:00" format
-  } else if (dateStr.includes('/')) {
-    const parts = dateStr.split('/');
-    date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+  const str = dateStr.trim();
+  
+  if (str.includes('-')) {
+    // Handle "2026-01-15" or "2026-01-15 10:00" format
+    date = new Date(str.split(' ')[0]);
+  } else if (str.includes('/')) {
+    // Handle "15/01/2026" format
+    const parts = str.split('/');
+    if (parts.length === 3) {
+      date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+    } else {
+      return false;
+    }
   } else {
     return false;
   }
+  
+  // Check if date is valid
+  if (isNaN(date.getTime())) return false;
   
   return date >= payPeriod.start && date <= payPeriod.end;
 }
@@ -140,6 +152,41 @@ export async function fetchInvoiceData(): Promise<InvoiceSummary> {
     directorMap.set(inv.director, current);
   }
 
+  // Group by Property Manager (PM) using email
+  const pmMap = new Map<string, { email: string; pmName: string; outstanding: number; paid: number; count: number }>();
+  for (const inv of invoices) {
+    const email = inv.email?.toLowerCase().trim() || 'unknown';
+    
+    // Extract PM name from email (e.g., "john.smith@company.com" -> "John Smith")
+    // Or use the Name column if available
+    let pmName = inv.name || '';
+    if (!pmName && email !== 'unknown') {
+      // Try to extract name from email
+      const emailPart = email.split('@')[0] || '';
+      pmName = emailPart
+        .replace(/[._-]/g, ' ')
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+    }
+    
+    const current = pmMap.get(email) || { 
+      email, 
+      pmName: pmName || email.split('@')[0] || 'Unknown',
+      outstanding: 0, 
+      paid: 0, 
+      count: 0 
+    };
+    
+    current.count++;
+    if (inv.paid === 'PAID') {
+      current.paid += inv.amount;
+    } else {
+      current.outstanding += inv.amount;
+    }
+    pmMap.set(email, current);
+  }
+
   return {
     totalOutstanding: outstanding.reduce((sum, inv) => sum + inv.amount, 0),
     totalPaid: paid.reduce((sum, inv) => sum + inv.amount, 0),
@@ -152,6 +199,9 @@ export async function fetchInvoiceData(): Promise<InvoiceSummary> {
       .map(([director, data]) => ({ director, ...data }))
       .filter(d => d.director) // Remove empty director entries
       .sort((a, b) => b.outstanding - a.outstanding),
+    byPM: Array.from(pmMap.entries())
+      .map(([_, data]) => data)
+      .sort((a, b) => b.outstanding - a.outstanding),
   };
 }
 
@@ -160,22 +210,26 @@ export async function fetchInvoiceData(): Promise<InvoiceSummary> {
 // =====================
 
 function parseTicketRow(row: string[]): Ticket | null {
-  // Expected columns: Vehicle reg, Fine amount, Fine-Issued Date, Name, Admin Fee 25£, Date paid, Ref Number
+  // Expected columns: Vehicle reg, Fine amount, Fine-Issued Date, Name, Admin Fee 25£ (this is actually the TOTAL), Date paid, Ref Number
   if (row.length < 4) return null;
   
-  const [vehicleReg, fineAmount, fineIssuedDate, name, adminFee, datePaid, refNumber] = row;
+  const [vehicleReg, fineAmount, fineIssuedDate, name, totalAmount, datePaid, refNumber] = row;
   
   // Skip header rows
   if (vehicleReg?.toLowerCase() === 'vehicle reg' || !vehicleReg) return null;
   
+  const total = parseCurrency(totalAmount);
+  const fine = parseCurrency(fineAmount);
+  
   return {
     vehicleReg: vehicleReg || '',
-    fineAmount: parseCurrency(fineAmount),
+    fineAmount: fine,
     fineIssuedDate: fineIssuedDate || '',
     engineerName: name || '',
-    adminFee: parseCurrency(adminFee),
+    adminFee: 0, // We'll use totalAmount directly, not adding adminFee separately
     datePaid: datePaid || '',
     refNumber: refNumber || '',
+    totalAmount: total, // This is the actual total to deduct
   };
 }
 
@@ -203,7 +257,7 @@ async function fetchTicketsData(): Promise<Ticket[]> {
 // PAYROLL DATA PROCESSING
 // =====================
 
-function parsePayslipRow(row: string[], engineerName: string): EngineerJob | null {
+function parsePayslipRow(row: string[], engineerName: string, rowIndex: number): EngineerJob | null {
   // Expected columns: Job Id, Date, Hours, Cost, Overtime, Hourly Rate
   if (row.length < 4) return null;
   
@@ -212,14 +266,19 @@ function parsePayslipRow(row: string[], engineerName: string): EngineerJob | nul
   // Skip header rows
   if (jobId?.toLowerCase() === 'job id' || !jobId) return null;
   
+  // Parse hours flexibly (handles "60 mins", "1:30:00", etc.)
+  const hoursDecimal = parseHoursFlexible(hours);
+  
   return {
     jobId: jobId || '',
     date: date || '',
-    hours: hours || '0:00:00',
+    hours: hours || '0',
+    hoursDecimal, // Numeric hours for flagging
     cost: parseCurrency(cost),
     overtime: parseCurrency(overtime),
     hourlyRate: hourlyRate ? parseCurrency(hourlyRate) : null,
     engineerName,
+    rowIndex, // For updating the sheet
   };
 }
 
@@ -254,7 +313,7 @@ export async function fetchPayrollData(): Promise<PayrollSummary> {
     
     // Skip the first row (headers)
     for (let i = 1; i < data.length; i++) {
-      const job = parsePayslipRow(data[i], sheetName);
+      const job = parsePayslipRow(data[i], sheetName, i + 1); // i+1 for 1-indexed sheet rows
       if (job) {
         jobs.push(job);
         allJobs.push(job);
@@ -284,7 +343,7 @@ export async function fetchPayrollData(): Promise<PayrollSummary> {
         }
       }
       
-      const totalFines = engineerTickets.reduce((sum, t) => sum + t.fineAmount + t.adminFee, 0);
+      const totalFines = engineerTickets.reduce((sum, t) => sum + (t.totalAmount || t.fineAmount + t.adminFee), 0);
       
       engineerSummaries.push({
         name: sheetName,
@@ -318,7 +377,7 @@ export async function fetchPayrollData(): Promise<PayrollSummary> {
     .map(([date, data]) => ({ date, ...data }))
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  const totalFines = tickets.reduce((sum, t) => sum + t.fineAmount + t.adminFee, 0);
+  const totalFines = tickets.reduce((sum, t) => sum + (t.totalAmount || t.fineAmount + t.adminFee), 0);
 
   return {
     totalCost: engineerSummaries.reduce((sum, eng) => sum + eng.totalCost, 0),
