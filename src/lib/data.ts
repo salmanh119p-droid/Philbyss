@@ -76,13 +76,9 @@ function isWithinPayPeriod(dateStr: string, payPeriod: { start: Date; end: Date 
   return date >= payPeriod.start && date <= payPeriod.end;
 }
 
-// Get display name (second word of engineer name)
+// Get display name (full name from sheet tab)
 function getDisplayName(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/);
-  if (parts.length >= 2) {
-    return parts[1]; // Return second word (Mohammed, Harry, etc.)
-  }
-  return parts[0] || fullName; // Fallback to first word or full name
+  return fullName.trim() || fullName;
 }
 
 // =====================
@@ -210,17 +206,20 @@ export async function fetchInvoiceData(): Promise<InvoiceSummary> {
 // =====================
 
 function parseTicketRow(row: string[]): Ticket | null {
-  // Expected columns: Vehicle reg, Fine amount, Fine-Issued Date, Name, Admin Fee 25£ (this is actually the TOTAL), Date paid, Ref Number
+  // Expected columns: Vehicle reg, Fine amount, Fine-Issued Date, Name, Admin Fee 25£ (this is actually the TOTAL), Date paid, Ref Number, PAID
   if (row.length < 4) return null;
-  
-  const [vehicleReg, fineAmount, fineIssuedDate, name, totalAmount, datePaid, refNumber] = row;
-  
+
+  const [vehicleReg, fineAmount, fineIssuedDate, name, totalAmount, datePaid, refNumber, paidStatus] = row;
+
   // Skip header rows
   if (vehicleReg?.toLowerCase() === 'vehicle reg' || !vehicleReg) return null;
-  
+
+  // Only include NOT PAID tickets
+  if (paidStatus?.trim().toUpperCase() === 'PAID') return null;
+
   const total = parseCurrency(totalAmount);
   const fine = parseCurrency(fineAmount);
-  
+
   return {
     vehicleReg: vehicleReg || '',
     fineAmount: fine,
@@ -331,17 +330,9 @@ export async function fetchPayrollData(): Promise<PayrollSummary> {
       // Get display name (second word)
       const displayName = getDisplayName(sheetName);
       
-      // Find tickets for this engineer
+      // Find tickets for this engineer by exact match on the Name column from the Tickets sheet
       const normalizedSheetName = sheetName.toLowerCase().trim();
       const engineerTickets = ticketsByEngineer.get(normalizedSheetName) || [];
-      
-      // Also try matching by display name
-      const displayNameLower = displayName.toLowerCase();
-      for (const [name, tix] of ticketsByEngineer.entries()) {
-        if (name.includes(displayNameLower) || displayNameLower.includes(name.split(' ')[0])) {
-          engineerTickets.push(...tix.filter(t => !engineerTickets.includes(t)));
-        }
-      }
       
       const totalFines = engineerTickets.reduce((sum, t) => sum + (t.totalAmount || t.fineAmount + t.adminFee), 0);
       
