@@ -16,6 +16,7 @@ import {
   TrendingUp,
   Car,
   AlertTriangle,
+  Search,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import StatCard from '@/components/StatCard';
@@ -29,8 +30,9 @@ import {
   TopEngineersChart,
 } from '@/components/Charts';
 import { DashboardData } from '@/types';
+import MaterialSearch from '@/components/MaterialSearch';
 
-type TabType = 'overview' | 'invoices' | 'payroll';
+type TabType = 'overview' | 'invoices' | 'payroll' | 'materials';
 
 export default function DashboardClient() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -95,6 +97,7 @@ export default function DashboardClient() {
     { id: 'overview' as TabType, label: 'Overview', icon: LayoutDashboard },
     { id: 'invoices' as TabType, label: 'Invoices', icon: FileText },
     { id: 'payroll' as TabType, label: 'Payroll', icon: Users },
+    { id: 'materials' as TabType, label: 'Material Search', icon: Search },
   ];
 
   if (isLoading) {
@@ -347,12 +350,16 @@ export default function DashboardClient() {
             </div>
 
             {/* Engineer Table */}
-            <EngineerTable 
-              data={data.payroll.engineers} 
+            <EngineerTable
+              data={data.payroll.engineers}
               payPeriodStart={data.payroll.payPeriodStart}
               payPeriodEnd={data.payroll.payPeriodEnd}
             />
           </div>
+        )}
+
+        {activeTab === 'materials' && (
+          <MaterialSearch />
         )}
       </main>
 

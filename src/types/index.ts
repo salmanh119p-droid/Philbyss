@@ -103,6 +103,28 @@ export interface DashboardData {
   lastUpdated: string;
 }
 
+// Material Search Types
+export interface MaterialSearchResult {
+  rank: number;
+  title: string;
+  price: string;
+  supplier: string;
+  also_available: string;
+  delivery: string;
+  rating: string;
+  url: string;
+  image: string | null;
+  why: string;
+}
+
+export interface MaterialSearchResponse {
+  success: boolean;
+  query_original: string;
+  query_optimized: string;
+  suppliers_searched: string[];
+  results: MaterialSearchResult[];
+}
+
 // API Response Types
 export interface ApiResponse<T> {
   success: boolean;
