@@ -125,6 +125,40 @@ export interface MaterialSearchResponse {
   results: MaterialSearchResult[];
 }
 
+// Job Dispatch Types (Supabase)
+export interface Job {
+  id: string;
+  job_ref: string;
+  source: string;
+  job_title: string;
+  trade: string;
+  priority: string;
+  status: string;
+  property_address: string;
+  postcode: string;
+  landlord: string | null;
+  tenant_name: string | null;
+  tenant_phone: string | null;
+  tenant_email: string | null;
+  job_description: string;
+  instruction_notes: string | null;
+  fixflo_ref: string | null;
+  assigned_by: string | null;
+  assigned_engineer: string | null;
+  works_due_by: string | null;
+  date_raised: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Material {
+  id: string;
+  job_id: string;
+  material_name: string;
+  quantity: number;
+  created_at: string;
+}
+
 // API Response Types
 export interface ApiResponse<T> {
   success: boolean;
