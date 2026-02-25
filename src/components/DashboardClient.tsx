@@ -17,6 +17,7 @@ import {
   Car,
   AlertTriangle,
   Search,
+  ClipboardList,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import StatCard from '@/components/StatCard';
@@ -31,8 +32,9 @@ import {
 } from '@/components/Charts';
 import { DashboardData } from '@/types';
 import MaterialSearch from '@/components/MaterialSearch';
+import JobsPanel from '@/components/JobsPanel';
 
-type TabType = 'overview' | 'invoices' | 'payroll' | 'materials';
+type TabType = 'overview' | 'invoices' | 'payroll' | 'materials' | 'jobs';
 
 export default function DashboardClient() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -98,6 +100,7 @@ export default function DashboardClient() {
     { id: 'invoices' as TabType, label: 'Invoices', icon: FileText },
     { id: 'payroll' as TabType, label: 'Payroll', icon: Users },
     { id: 'materials' as TabType, label: 'Material Search', icon: Search },
+    { id: 'jobs' as TabType, label: 'Jobs', icon: ClipboardList },
   ];
 
   if (isLoading) {
@@ -360,6 +363,10 @@ export default function DashboardClient() {
 
         {activeTab === 'materials' && (
           <MaterialSearch />
+        )}
+
+        {activeTab === 'jobs' && (
+          <JobsPanel />
         )}
       </main>
 
