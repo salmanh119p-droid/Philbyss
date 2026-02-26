@@ -159,6 +159,77 @@ export interface Material {
   created_at: string;
 }
 
+// Engineer Matching Types (n8n webhook response)
+export interface EngineerBookedSlot {
+  start: string;
+  end: string;
+  hours: number;
+  job_uuid: string;
+}
+
+export interface EngineerFreeSlot {
+  start: string;
+  end: string;
+  hours: number;
+}
+
+export interface EngineerDayAvailability {
+  date: string;
+  day: string;
+  label: string;
+  is_today: boolean;
+  booked_slots: EngineerBookedSlot[];
+  free_slots: EngineerFreeSlot[];
+  total_free_hours: number;
+  total_booked_hours: number;
+  booking_count: number;
+}
+
+export interface EngineerMatch {
+  staff_uuid: string;
+  name: string;
+  email: string;
+  mobile: string;
+  match_score: number;
+  trade_score: number;
+  trade_match_reason: string;
+  area: string;
+  area_match: boolean;
+  certifications: string[];
+  trades: string[];
+  skills: string[];
+  badge: string | null;
+  week_summary: {
+    total_free_hours: number;
+    today_free_hours: number;
+  };
+  availability: EngineerDayAvailability[];
+}
+
+export interface EngineerSearchResponse {
+  error: boolean;
+  job: {
+    job_ref: string;
+    trade: string;
+    job_title: string;
+    postcode: string;
+    region: string;
+    priority: string;
+  };
+  request: {
+    timestamp: string;
+    today: string;
+    current_hour: string;
+    date_from: string;
+    num_days: number;
+    date_range: { from: string; to: string };
+  };
+  total_matched: number;
+  total_others: number;
+  matched_engineers: EngineerMatch[];
+  other_engineers: EngineerMatch[];
+}
+
 // API Response Types
 export interface ApiResponse<T> {
   success: boolean;
