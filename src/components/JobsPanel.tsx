@@ -12,6 +12,7 @@ import {
 import { clsx } from 'clsx';
 import { supabase } from '@/lib/supabase';
 import { Job, Material } from '@/types';
+import EngineerPanel from './EngineerPanel';
 
 // ── Trade config ──
 const TRADE_CONFIG: Record<string, { icon: string; color: string }> = {
@@ -124,6 +125,7 @@ export default function JobsPanel() {
   const [addingMaterial, setAddingMaterial] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false); // mobile detail view
+  const [showEngineerPanel, setShowEngineerPanel] = useState(false);
 
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const selectedJobRef = useRef<string | null>(null);
@@ -314,7 +316,16 @@ export default function JobsPanel() {
         </div>
       )}
 
-      <div className="flex flex-col lg:flex-row gap-0 lg:gap-0" style={{ minHeight: 'calc(100vh - 200px)' }}>
+      {/* Engineer Finder Overlay */}
+      {showEngineerPanel && selectedJob && (
+        <EngineerPanel
+          job={selectedJob}
+          onClose={() => setShowEngineerPanel(false)}
+          onToast={showToast}
+        />
+      )}
+
+      <div className="flex flex-col lg:flex-row gap-0 lg:gap-0" style={{ height: 'calc(100vh - 200px)' }}>
         {/* ───── LEFT SIDEBAR ───── */}
         <div
           className={clsx(
@@ -609,7 +620,7 @@ export default function JobsPanel() {
 
               {/* Find Best Engineer Button */}
               <button
-                onClick={() => showToast('🚧 Engineer matching coming soon — this will connect to ServiceM8 via n8n')}
+                onClick={() => setShowEngineerPanel(true)}
                 className="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 transition-all duration-200 shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2"
               >
                 <span className="w-2 h-2 rounded-full bg-white" />
