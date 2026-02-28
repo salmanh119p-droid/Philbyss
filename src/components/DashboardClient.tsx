@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   Search,
   ClipboardList,
+  Calendar,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import StatCard from '@/components/StatCard';
@@ -33,8 +34,10 @@ import {
 import { DashboardData } from '@/types';
 import MaterialSearch from '@/components/MaterialSearch';
 import JobsPanel from '@/components/JobsPanel';
+import SearchEngineerPage from '@/components/SearchEngineerPage';
+import ManageLeavePage from '@/components/ManageLeavePage';
 
-type TabType = 'overview' | 'invoices' | 'payroll' | 'materials' | 'jobs';
+type TabType = 'overview' | 'invoices' | 'payroll' | 'materials' | 'jobs' | 'engineers' | 'leave';
 
 export default function DashboardClient() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -101,6 +104,8 @@ export default function DashboardClient() {
     { id: 'payroll' as TabType, label: 'Payroll', icon: Users },
     { id: 'materials' as TabType, label: 'Material Search', icon: Search },
     { id: 'jobs' as TabType, label: 'Jobs', icon: ClipboardList },
+    { id: 'engineers' as TabType, label: 'Search Engineer', icon: Users },
+    { id: 'leave' as TabType, label: 'Manage Leave', icon: Calendar },
   ];
 
   if (isLoading) {
@@ -367,6 +372,14 @@ export default function DashboardClient() {
 
         {activeTab === 'jobs' && (
           <JobsPanel />
+        )}
+
+        {activeTab === 'engineers' && (
+          <SearchEngineerPage />
+        )}
+
+        {activeTab === 'leave' && (
+          <ManageLeavePage />
         )}
       </main>
 

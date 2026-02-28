@@ -178,6 +178,7 @@ export interface EngineerDayAvailability {
   day: string;
   label: string;
   is_today: boolean;
+  on_leave?: boolean;
   booked_slots: EngineerBookedSlot[];
   free_slots: EngineerFreeSlot[];
   total_free_hours: number;
@@ -238,6 +239,34 @@ export interface EngineerSearchResponse {
   total_others: number;
   matched_engineers: EngineerMatch[];
   other_engineers: EngineerMatch[];
+}
+
+// Single Engineer Availability Response (engineer-availability webhook)
+export interface EngineerAvailabilityResponse {
+  error: boolean;
+  engineer: {
+    staff_uuid: string;
+    name: string;
+    full_name: string;
+    trades: string[];
+    skills: string[];
+    area: string;
+    certifications: string[];
+    on_leave_today: boolean;
+    leave_dates: string[];
+    leave_periods: EngineerLeavePeriod[];
+  };
+  request: {
+    date_from: string;
+    date_to: string;
+    num_days: number;
+    today: string;
+  };
+  week_summary: {
+    total_free_hours: number;
+    today_free_hours: number;
+  };
+  availability: EngineerDayAvailability[];
 }
 
 // Supabase Engineer Profiles
