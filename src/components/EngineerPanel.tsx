@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X,
   ChevronLeft,
@@ -12,17 +12,26 @@ import {
   Mail,
   Loader2,
   AlertCircle,
+  Search,
+  Calendar,
+  Trash2,
+  Plus,
+  Users,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { supabase } from '@/lib/supabase';
 import {
   Job,
   EngineerSearchResponse,
   EngineerMatch,
   EngineerDayAvailability,
+  Engineer,
+  EngineerLeave,
 } from '@/types';
 
 // ── Types ──
 type DateRangePreset = 'today' | '3days' | '7days' | '14days' | 'custom';
+type PanelTab = 'results' | 'search' | 'leave';
 
 interface EngineerPanelProps {
   job: Job;
@@ -50,6 +59,14 @@ function scoreColor(score: number): string {
   return 'text-[var(--color-text-muted)] bg-[var(--color-bg-secondary)]';
 }
 
+function formatLeaveRange(start: string, end: string): string {
+  const s = new Date(start + 'T00:00:00');
+  const e = new Date(end + 'T00:00:00');
+  const fmt = (d: Date) =>
+    d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  return s.getTime() === e.getTime() ? fmt(s) : `${fmt(s)} – ${fmt(e)}`;
+}
+
 // ── Sub-components ──
 
 function LoadingState() {
@@ -60,7 +77,7 @@ function LoadingState() {
         Searching ServiceM8 for available engineers...
       </p>
       <p className="text-xs text-[var(--color-text-muted)] mt-1">
-        Checking availability, trades, and location matches
+        Checking availability, trades, leave, and location matches
       </p>
     </div>
   );
@@ -140,7 +157,7 @@ function DateRangeSelector({
           )}
         >
           {p.label}
-          {preset === p.key && p.key !== 'custom' && ' ✓'}
+          {preset === p.key && p.key !== 'custom' && ' \u2713'}
         </button>
       ))}
       {isRefreshing && <Loader2 className="w-4 h-4 animate-spin text-purple-400" />}
@@ -177,16 +194,19 @@ function DateRangeSelector({
 
 function AvailabilityGrid({
   availability,
+  leaveDates,
   scrollIndex,
   onScrollChange,
 }: {
   availability: EngineerDayAvailability[];
+  leaveDates: string[];
   scrollIndex: number;
   onScrollChange: (idx: number) => void;
 }) {
   const VISIBLE_DAYS = 3;
   const maxIndex = Math.max(0, availability.length - VISIBLE_DAYS);
   const visibleDays = availability.slice(scrollIndex, scrollIndex + VISIBLE_DAYS);
+  const leaveSet = new Set(leaveDates);
 
   if (availability.length === 0) {
     return (
@@ -213,65 +233,92 @@ function AvailabilityGrid({
         </button>
       )}
 
-      <div className={clsx('grid gap-2 flex-1', `grid-cols-1 sm:grid-cols-${Math.min(visibleDays.length, VISIBLE_DAYS)}`)}>
-        {visibleDays.map((day) => (
-          <div
-            key={day.date}
-            className="bg-[var(--color-bg-secondary)] rounded-lg p-2 border border-[var(--color-border)]"
-          >
-            <p
+      <div className="grid gap-2 flex-1" style={{ gridTemplateColumns: `repeat(${Math.min(visibleDays.length, VISIBLE_DAYS)}, minmax(0, 1fr))` }}>
+        {visibleDays.map((day) => {
+          const isOnLeave = leaveSet.has(day.date);
+
+          return (
+            <div
+              key={day.date}
               className={clsx(
-                'text-xs font-semibold mb-2 text-center',
-                day.is_today ? 'text-blue-400' : 'text-[var(--color-text-secondary)]'
+                'rounded-lg p-2 border',
+                isOnLeave
+                  ? 'bg-red-500/5 border-red-500/20'
+                  : 'bg-[var(--color-bg-secondary)] border-[var(--color-border)]'
               )}
             >
-              {day.label}
-              {day.is_today && (
-                <span className="ml-1 text-[10px] inline-flex items-center px-1.5 py-0 rounded-full bg-blue-500/20 text-blue-400">
-                  TODAY
-                </span>
-              )}
-            </p>
-
-            <div className="space-y-1 max-h-48 overflow-y-auto">
-              {/* Interleave booked and free slots chronologically */}
-              {[
-                ...day.booked_slots.map((s) => ({ ...s, type: 'booked' as const })),
-                ...day.free_slots.map((s) => ({ ...s, type: 'free' as const, job_uuid: '' })),
-              ]
-                .sort((a, b) => a.start.localeCompare(b.start))
-                .map((slot, i) =>
-                  slot.type === 'booked' ? (
-                    <div
-                      key={`b-${i}`}
-                      className="text-[11px] px-1.5 py-1 rounded bg-[var(--color-bg-card)] border border-[var(--color-border)] text-[var(--color-text-muted)]"
-                    >
-                      {slot.start}–{slot.end}{' '}
-                      <span className="text-[10px]">(booked)</span>
-                    </div>
-                  ) : (
-                    <div
-                      key={`f-${i}`}
-                      className="text-[11px] px-1.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-pointer hover:bg-emerald-500/20 transition-colors"
-                    >
-                      ✓ {slot.start}–{slot.end}{' '}
-                      <span className="text-[10px]">({slot.hours}h free)</span>
-                    </div>
-                  )
+              <p
+                className={clsx(
+                  'text-xs font-semibold mb-2 text-center',
+                  isOnLeave
+                    ? 'text-red-400'
+                    : day.is_today
+                    ? 'text-blue-400'
+                    : 'text-[var(--color-text-secondary)]'
                 )}
+              >
+                {day.label}
+                {day.is_today && (
+                  <span className="ml-1 text-[10px] inline-flex items-center px-1.5 py-0 rounded-full bg-blue-500/20 text-blue-400">
+                    TODAY
+                  </span>
+                )}
+                {isOnLeave && (
+                  <span className="ml-1 text-[10px] inline-flex items-center px-1.5 py-0 rounded-full bg-red-500/20 text-red-400">
+                    ON LEAVE
+                  </span>
+                )}
+              </p>
 
-              {day.free_slots.length === 0 && day.booked_slots.length === 0 && (
-                <p className="text-[10px] text-[var(--color-text-muted)] text-center py-2">
-                  No data
-                </p>
+              {isOnLeave ? (
+                <div className="flex flex-col items-center justify-center py-4 text-center">
+                  <Calendar className="w-5 h-5 text-red-400/40 mb-1" />
+                  <p className="text-[10px] text-red-400/60 font-medium">ON LEAVE</p>
+                  <p className="text-[10px] text-[var(--color-text-muted)]">0h free</p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {[
+                      ...day.booked_slots.map((s) => ({ ...s, type: 'booked' as const })),
+                      ...day.free_slots.map((s) => ({ ...s, type: 'free' as const, job_uuid: '' })),
+                    ]
+                      .sort((a, b) => a.start.localeCompare(b.start))
+                      .map((slot, i) =>
+                        slot.type === 'booked' ? (
+                          <div
+                            key={`b-${i}`}
+                            className="text-[11px] px-1.5 py-1 rounded bg-[var(--color-bg-card)] border border-[var(--color-border)] text-[var(--color-text-muted)]"
+                          >
+                            {slot.start}\u2013{slot.end}{' '}
+                            <span className="text-[10px]">(booked)</span>
+                          </div>
+                        ) : (
+                          <div
+                            key={`f-${i}`}
+                            className="text-[11px] px-1.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-pointer hover:bg-emerald-500/20 transition-colors"
+                          >
+                            \u2713 {slot.start}\u2013{slot.end}{' '}
+                            <span className="text-[10px]">({slot.hours}h free)</span>
+                          </div>
+                        )
+                      )}
+
+                    {day.free_slots.length === 0 && day.booked_slots.length === 0 && (
+                      <p className="text-[10px] text-[var(--color-text-muted)] text-center py-2">
+                        No data
+                      </p>
+                    )}
+                  </div>
+
+                  <p className="text-[10px] text-[var(--color-text-muted)] mt-1 text-center border-t border-[var(--color-border)] pt-1">
+                    {day.total_free_hours}h free \u00b7 {day.booking_count} bookings
+                  </p>
+                </>
               )}
             </div>
-
-            <p className="text-[10px] text-[var(--color-text-muted)] mt-1 text-center border-t border-[var(--color-border)] pt-1">
-              {day.total_free_hours}h free · {day.booking_count} bookings
-            </p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {availability.length > VISIBLE_DAYS && (
@@ -311,19 +358,27 @@ function EngineerCard({
         <div className="flex items-start gap-3 lg:w-64 flex-shrink-0">
           <div
             className={clsx(
-              'w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0',
+              'w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 relative',
               avatarColor
             )}
           >
             {initial}
+            {engineer.on_leave_today && (
+              <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-500 border-2 border-[var(--color-bg-card)]" />
+            )}
           </div>
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-semibold text-[var(--color-text-primary)]">{engineer.name}</h3>
               {engineer.badge && (
-                <span className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                  ⭐ {engineer.badge}
+                <span className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  {engineer.badge}
+                </span>
+              )}
+              {engineer.on_leave_today && (
+                <span className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium bg-red-500/20 text-red-400 border border-red-500/30">
+                  ON LEAVE
                 </span>
               )}
             </div>
@@ -332,7 +387,7 @@ function EngineerCard({
               <MapPin className="w-3 h-3" />
               <span>{engineer.area}</span>
               {engineer.area_match && (
-                <span className="text-emerald-400 text-[10px]">✓ match</span>
+                <span className="text-emerald-400 text-[10px]">\u2713 match</span>
               )}
             </div>
 
@@ -382,6 +437,21 @@ function EngineerCard({
             <p className="text-[10px] text-[var(--color-text-muted)] mt-1 italic">
               {engineer.trade_match_reason}
             </p>
+
+            {/* Leave dates info */}
+            {engineer.leave_periods.length > 0 && (
+              <div className="mt-1.5">
+                {engineer.leave_periods.map((lp, i) => (
+                  <p
+                    key={i}
+                    className="text-[10px] text-amber-400 flex items-center gap-1"
+                  >
+                    <Calendar className="w-2.5 h-2.5" />
+                    {lp.leave_type}: {formatLeaveRange(lp.leave_start, lp.leave_end)}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
 
           <ScoreBadge score={engineer.match_score} />
@@ -391,8 +461,8 @@ function EngineerCard({
         <div className="flex-1 min-w-0">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
             {[
-              { label: 'TRAVEL', value: '—' },
-              { label: '+15min BREAK', value: '—' },
+              { label: 'TRAVEL', value: '\u2014' },
+              { label: '+15min BREAK', value: '\u2014' },
               { label: 'SUGGESTED', value: '~1.5h' },
               { label: 'SET HOURS', value: null },
             ].map((box) => (
@@ -428,6 +498,7 @@ function EngineerCard({
 
           <AvailabilityGrid
             availability={engineer.availability}
+            leaveDates={engineer.leave_dates || []}
             scrollIndex={scrollIndex}
             onScrollChange={onScrollChange}
           />
@@ -437,6 +508,283 @@ function EngineerCard({
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Engineer Search Tab ──
+function EngineerSearchTab({
+  engineers,
+  isLoading,
+  job,
+  onSelectEngineer,
+  onToast,
+}: {
+  engineers: Engineer[];
+  isLoading: boolean;
+  job: Job;
+  onSelectEngineer: (sm8Uuid: string) => void;
+  onToast: (message: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+
+  const filtered = engineers.filter(
+    (e) =>
+      e.display_name.toLowerCase().includes(query.toLowerCase()) ||
+      e.full_name.toLowerCase().includes(query.toLowerCase()) ||
+      e.trades.some((t) => t.toLowerCase().includes(query.toLowerCase()))
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)]" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search engineer by name or trade..."
+          className="input pl-9 text-sm"
+        />
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="card text-center py-8">
+          <p className="text-sm text-[var(--color-text-muted)]">No engineers found</p>
+        </div>
+      ) : (
+        <div className="grid gap-2">
+          {filtered.map((eng) => {
+            const avatarColor = AVATAR_COLORS[eng.display_name.charCodeAt(0) % AVATAR_COLORS.length];
+            return (
+              <button
+                key={eng.id}
+                onClick={() => onSelectEngineer(eng.sm8_uuid)}
+                className="flex items-center gap-3 p-3 rounded-lg bg-[var(--color-bg-card)] border border-[var(--color-border)] hover:border-[var(--color-border-light)] hover:bg-[var(--color-bg-hover)] transition-all text-left w-full"
+              >
+                <div className={clsx('w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0', avatarColor)}>
+                  {eng.display_name.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+                    {eng.display_name}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                    {eng.trades.map((t) => (
+                      <span
+                        key={t}
+                        className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium bg-[var(--color-bg-hover)] text-[var(--color-text-secondary)]"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                    {eng.certifications.map((c) => (
+                      <span
+                        key={c}
+                        className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium bg-emerald-500/20 text-emerald-400"
+                      >
+                        {c} \u2713
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 text-xs text-[var(--color-text-muted)] flex-shrink-0">
+                  <MapPin className="w-3 h-3" />
+                  {eng.area_display}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Leave Management Tab ──
+function LeaveManagementTab({
+  engineers,
+  onToast,
+}: {
+  engineers: Engineer[];
+  onToast: (message: string) => void;
+}) {
+  const [leaveRecords, setLeaveRecords] = useState<EngineerLeave[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedEngineerId, setSelectedEngineerId] = useState('');
+  const [leaveStart, setLeaveStart] = useState('');
+  const [leaveEnd, setLeaveEnd] = useState('');
+  const [leaveType, setLeaveType] = useState('ANNUAL LEAVE');
+  const [isAdding, setIsAdding] = useState(false);
+
+  const fetchLeave = useCallback(async () => {
+    setIsLoading(true);
+    const today = new Date().toISOString().split('T')[0];
+    const { data, error } = await supabase
+      .from('engineer_leave')
+      .select('*, engineers(display_name, sm8_uuid)')
+      .gte('leave_end', today)
+      .order('leave_start', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching leave:', error);
+    } else {
+      setLeaveRecords(data || []);
+    }
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchLeave();
+  }, [fetchLeave]);
+
+  const handleAddLeave = async () => {
+    if (!selectedEngineerId || !leaveStart || !leaveEnd) return;
+    setIsAdding(true);
+    const { error } = await supabase.from('engineer_leave').insert({
+      engineer_id: selectedEngineerId,
+      leave_type: leaveType,
+      leave_start: leaveStart,
+      leave_end: leaveEnd,
+      all_day: true,
+    });
+    if (error) {
+      console.error('Error adding leave:', error);
+      onToast('Failed to add leave');
+    } else {
+      onToast('Leave added successfully');
+      setLeaveStart('');
+      setLeaveEnd('');
+      setSelectedEngineerId('');
+      fetchLeave();
+    }
+    setIsAdding(false);
+  };
+
+  const handleDeleteLeave = async (leaveId: string) => {
+    const { error } = await supabase
+      .from('engineer_leave')
+      .delete()
+      .eq('id', leaveId);
+    if (error) {
+      console.error('Error deleting leave:', error);
+      onToast('Failed to delete leave');
+    } else {
+      onToast('Leave deleted');
+      fetchLeave();
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Add leave form */}
+      <div className="card">
+        <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-3">
+          Add Leave
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <select
+            value={selectedEngineerId}
+            onChange={(e) => setSelectedEngineerId(e.target.value)}
+            className="input text-sm"
+          >
+            <option value="">Select engineer...</option>
+            {engineers.map((eng) => (
+              <option key={eng.id} value={eng.id}>
+                {eng.display_name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={leaveType}
+            onChange={(e) => setLeaveType(e.target.value)}
+            className="input text-sm"
+          >
+            <option value="ANNUAL LEAVE">Annual Leave</option>
+            <option value="SICK">Sick</option>
+            <option value="TRAINING">Training</option>
+            <option value="OTHER">Other</option>
+          </select>
+          <input
+            type="date"
+            value={leaveStart}
+            onChange={(e) => setLeaveStart(e.target.value)}
+            className="input text-sm"
+            placeholder="Start date"
+          />
+          <input
+            type="date"
+            value={leaveEnd}
+            onChange={(e) => setLeaveEnd(e.target.value)}
+            className="input text-sm"
+            placeholder="End date"
+          />
+          <button
+            onClick={handleAddLeave}
+            disabled={!selectedEngineerId || !leaveStart || !leaveEnd || isAdding}
+            className={clsx(
+              'btn btn-primary text-sm gap-1',
+              (!selectedEngineerId || !leaveStart || !leaveEnd || isAdding) && 'opacity-50 cursor-not-allowed'
+            )}
+          >
+            <Plus className="w-4 h-4" />
+            {isAdding ? 'Adding...' : 'Add Leave'}
+          </button>
+        </div>
+      </div>
+
+      {/* Leave list */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
+        </div>
+      ) : leaveRecords.length === 0 ? (
+        <div className="card text-center py-8">
+          <Calendar className="w-8 h-8 text-[var(--color-text-muted)] mx-auto mb-2" />
+          <p className="text-sm text-[var(--color-text-muted)]">No upcoming leave records</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">
+            Upcoming Leave ({leaveRecords.length})
+          </p>
+          {leaveRecords.map((lr) => (
+            <div
+              key={lr.id}
+              className="flex items-center justify-between gap-3 p-3 rounded-lg bg-[var(--color-bg-card)] border border-[var(--color-border)]"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                  <Calendar className="w-4 h-4 text-red-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+                    {lr.engineers?.display_name || 'Unknown'}
+                  </p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">
+                    {lr.leave_type} \u00b7 {formatLeaveRange(lr.leave_start, lr.leave_end)}
+                  </p>
+                  {lr.notes && (
+                    <p className="text-[10px] text-[var(--color-text-muted)] italic mt-0.5">
+                      {lr.notes}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => handleDeleteLeave(lr.id)}
+                className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -453,8 +801,30 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
   const [availabilityScrollIndex, setAvailabilityScrollIndex] = useState<
     Record<string, number>
   >({});
+  const [activeTab, setActiveTab] = useState<PanelTab>('results');
+  const [allEngineers, setAllEngineers] = useState<Engineer[]>([]);
+  const [engineersLoading, setEngineersLoading] = useState(true);
 
   const formatDate = (d: Date) => d.toISOString().split('T')[0];
+
+  // Load all engineers from Supabase
+  useEffect(() => {
+    async function loadEngineers() {
+      setEngineersLoading(true);
+      const { data, error } = await supabase
+        .from('engineers')
+        .select('*')
+        .eq('is_active', true)
+        .order('display_name');
+      if (error) {
+        console.error('Error loading engineers:', error);
+      } else {
+        setAllEngineers(data || []);
+      }
+      setEngineersLoading(false);
+    }
+    loadEngineers();
+  }, []);
 
   const getDateRange = useCallback(
     (preset: DateRangePreset, cFrom?: string, cTo?: string) => {
@@ -480,7 +850,7 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
   );
 
   const fetchEngineers = useCallback(
-    async (preset: DateRangePreset, showAsRefresh = false) => {
+    async (preset: DateRangePreset, showAsRefresh = false, specificEngineer?: string) => {
       if (showAsRefresh) setIsRefreshing(true);
       else setIsLoading(true);
       setError(null);
@@ -489,7 +859,7 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
 
       try {
         const res = await fetch(
-          'https://n8n.srv1177154.hstgr.cloud/webhook/find-engineer',
+          'https://n8n.srv1177154.hstgr.cloud/webhook/find-engineer2',
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -500,6 +870,7 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
               job_description: job.job_description,
               postcode: job.postcode,
               priority: job.priority,
+              ...(specificEngineer ? { specific_engineer: specificEngineer } : {}),
               ...range,
             }),
           }
@@ -511,6 +882,7 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
         if (data.error) throw new Error('The engineer matching service returned an error');
 
         setResponse(data);
+        setActiveTab('results');
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Failed to find engineers';
         setError(message);
@@ -551,6 +923,10 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
     }
   };
 
+  const handleSelectSpecificEngineer = (sm8Uuid: string) => {
+    fetchEngineers(datePreset, false, sm8Uuid);
+  };
+
   const getScrollIndex = (staffUuid: string) =>
     availabilityScrollIndex[staffUuid] || 0;
 
@@ -558,9 +934,15 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
     setAvailabilityScrollIndex((prev) => ({ ...prev, [staffUuid]: idx }));
   };
 
-  const allEngineers = [
+  const allResults = [
     ...(response?.matched_engineers || []),
     ...(response?.other_engineers || []),
+  ];
+
+  const tabs: { key: PanelTab; label: string; icon: typeof Users }[] = [
+    { key: 'results', label: 'Results', icon: Users },
+    { key: 'search', label: 'Search Engineer', icon: Search },
+    { key: 'leave', label: 'Manage Leave', icon: Calendar },
   ];
 
   return (
@@ -571,15 +953,15 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
           <div>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-white" />
-              <h2 className="text-lg font-bold text-white">Engineer Matches</h2>
+              <h2 className="text-lg font-bold text-white">Find Best Engineer in ServiceM8</h2>
             </div>
             <p className="text-sm text-purple-200/80 mt-0.5">
-              {job.job_ref} · {job.trade} · {job.postcode}
+              {job.job_ref} \u00b7 {job.trade} \u00b7 {job.postcode}
               {response &&
-                ` · ${response.total_matched} matched, ${response.total_others} others`}
+                ` \u00b7 ${response.total_matched} matched, ${response.total_others} others`}
             </p>
             <p className="text-xs text-purple-300/60">
-              Ranked by trade · location · ServiceM8 availability · certifications
+              Ranked by trade \u00b7 location \u00b7 ServiceM8 availability \u00b7 certifications
             </p>
           </div>
           <button
@@ -589,74 +971,117 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Tabs */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={clsx(
+                'flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-all rounded-t-lg',
+                activeTab === tab.key
+                  ? 'bg-[var(--color-bg-primary)]/80 text-white'
+                  : 'text-purple-200/60 hover:text-white hover:bg-white/5'
+              )}
+            >
+              <tab.icon className="w-3.5 h-3.5" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* Date Range Selector */}
-        <DateRangeSelector
-          preset={datePreset}
-          onPresetChange={handlePresetChange}
-          customFrom={customDateFrom}
-          customTo={customDateTo}
-          onCustomFromChange={setCustomDateFrom}
-          onCustomToChange={setCustomDateTo}
-          onApplyCustom={handleApplyCustom}
-          isRefreshing={isRefreshing}
-        />
+        {/* Results Tab */}
+        {activeTab === 'results' && (
+          <>
+            {/* Date Range Selector */}
+            <DateRangeSelector
+              preset={datePreset}
+              onPresetChange={handlePresetChange}
+              customFrom={customDateFrom}
+              customTo={customDateTo}
+              onCustomFromChange={setCustomDateFrom}
+              onCustomToChange={setCustomDateTo}
+              onApplyCustom={handleApplyCustom}
+              isRefreshing={isRefreshing}
+            />
 
-        {/* Loading */}
-        {isLoading && <LoadingState />}
+            {/* Loading */}
+            {isLoading && <LoadingState />}
 
-        {/* Error */}
-        {error && !isLoading && (
-          <ErrorState error={error} onRetry={() => fetchEngineers(datePreset)} />
+            {/* Error */}
+            {error && !isLoading && (
+              <ErrorState error={error} onRetry={() => fetchEngineers(datePreset)} />
+            )}
+
+            {/* Results */}
+            {!isLoading && !error && response && (
+              <div className={clsx(isRefreshing && 'opacity-60 pointer-events-none transition-opacity')}>
+                {response.total_matched === 0 && <NoMatchesFallback />}
+
+                {response.matched_engineers.length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
+                      Matched Engineers ({response.total_matched})
+                    </h3>
+                    {response.matched_engineers.map((eng) => (
+                      <EngineerCard
+                        key={eng.staff_uuid}
+                        engineer={eng}
+                        scrollIndex={getScrollIndex(eng.staff_uuid)}
+                        onScrollChange={(idx) => setScrollIndex(eng.staff_uuid, idx)}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {response.other_engineers.length > 0 && (
+                  <div className="space-y-4 mt-8">
+                    <h3 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
+                      Other Available Engineers ({response.total_others})
+                    </h3>
+                    {response.other_engineers.map((eng) => (
+                      <EngineerCard
+                        key={eng.staff_uuid}
+                        engineer={eng}
+                        scrollIndex={getScrollIndex(eng.staff_uuid)}
+                        onScrollChange={(idx) => setScrollIndex(eng.staff_uuid, idx)}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {allResults.length === 0 && (
+                  <div className="card text-center py-8">
+                    <p className="text-sm text-[var(--color-text-muted)]">
+                      No engineers available for this trade and date range.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
 
-        {/* Results */}
-        {!isLoading && !error && response && (
-          <div className={clsx(isRefreshing && 'opacity-60 pointer-events-none transition-opacity')}>
-            {response.total_matched === 0 && <NoMatchesFallback />}
+        {/* Search Tab */}
+        {activeTab === 'search' && (
+          <EngineerSearchTab
+            engineers={allEngineers}
+            isLoading={engineersLoading}
+            job={job}
+            onSelectEngineer={handleSelectSpecificEngineer}
+            onToast={onToast}
+          />
+        )}
 
-            {response.matched_engineers.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
-                  Matched Engineers ({response.total_matched})
-                </h3>
-                {response.matched_engineers.map((eng) => (
-                  <EngineerCard
-                    key={eng.staff_uuid}
-                    engineer={eng}
-                    scrollIndex={getScrollIndex(eng.staff_uuid)}
-                    onScrollChange={(idx) => setScrollIndex(eng.staff_uuid, idx)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {response.other_engineers.length > 0 && (
-              <div className="space-y-4 mt-8">
-                <h3 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
-                  Other Available Engineers ({response.total_others})
-                </h3>
-                {response.other_engineers.map((eng) => (
-                  <EngineerCard
-                    key={eng.staff_uuid}
-                    engineer={eng}
-                    scrollIndex={getScrollIndex(eng.staff_uuid)}
-                    onScrollChange={(idx) => setScrollIndex(eng.staff_uuid, idx)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {allEngineers.length === 0 && (
-              <div className="card text-center py-8">
-                <p className="text-sm text-[var(--color-text-muted)]">
-                  No engineers available for this trade and date range.
-                </p>
-              </div>
-            )}
-          </div>
+        {/* Leave Tab */}
+        {activeTab === 'leave' && (
+          <LeaveManagementTab
+            engineers={allEngineers}
+            onToast={onToast}
+          />
         )}
       </div>
     </div>

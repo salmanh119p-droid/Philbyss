@@ -185,6 +185,13 @@ export interface EngineerDayAvailability {
   booking_count: number;
 }
 
+export interface EngineerLeavePeriod {
+  leave_type: string;
+  leave_start: string;
+  leave_end: string;
+  notes: string | null;
+}
+
 export interface EngineerMatch {
   staff_uuid: string;
   name: string;
@@ -199,6 +206,9 @@ export interface EngineerMatch {
   trades: string[];
   skills: string[];
   badge: string | null;
+  on_leave_today: boolean;
+  leave_dates: string[];
+  leave_periods: EngineerLeavePeriod[];
   week_summary: {
     total_free_hours: number;
     today_free_hours: number;
@@ -228,6 +238,35 @@ export interface EngineerSearchResponse {
   total_others: number;
   matched_engineers: EngineerMatch[];
   other_engineers: EngineerMatch[];
+}
+
+// Supabase Engineer Profiles
+export interface Engineer {
+  id: string;
+  sm8_uuid: string;
+  display_name: string;
+  full_name: string;
+  email: string;
+  mobile: string;
+  trades: string[];
+  skills: string[];
+  area: string;
+  area_display: string;
+  certifications: string[];
+  is_active: boolean;
+}
+
+export interface EngineerLeave {
+  id: string;
+  engineer_id: string;
+  leave_type: string;
+  leave_start: string;
+  leave_end: string;
+  all_day: boolean;
+  start_time: string | null;
+  end_time: string | null;
+  notes: string | null;
+  engineers?: { display_name: string; sm8_uuid: string };
 }
 
 // API Response Types
