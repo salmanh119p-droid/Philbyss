@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   X,
   ChevronLeft,
@@ -12,26 +12,18 @@ import {
   Mail,
   Loader2,
   AlertCircle,
-  Search,
   Calendar,
-  Trash2,
-  Plus,
-  Users,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { supabase } from '@/lib/supabase';
 import {
   Job,
   EngineerSearchResponse,
   EngineerMatch,
   EngineerDayAvailability,
-  Engineer,
-  EngineerLeave,
 } from '@/types';
 
 // ── Types ──
 type DateRangePreset = 'today' | '3days' | '7days' | '14days' | 'custom';
-type PanelTab = 'results' | 'search' | 'leave';
 
 interface EngineerPanelProps {
   job: Job;
@@ -157,7 +149,7 @@ function DateRangeSelector({
           )}
         >
           {p.label}
-          {preset === p.key && p.key !== 'custom' && ' \u2713'}
+          {preset === p.key && p.key !== 'custom' && ' ✓'}
         </button>
       ))}
       {isRefreshing && <Loader2 className="w-4 h-4 animate-spin text-purple-400" />}
@@ -235,7 +227,7 @@ function AvailabilityGrid({
 
       <div className="grid gap-2 flex-1" style={{ gridTemplateColumns: `repeat(${Math.min(visibleDays.length, VISIBLE_DAYS)}, minmax(0, 1fr))` }}>
         {visibleDays.map((day) => {
-          const isOnLeave = leaveSet.has(day.date);
+          const isOnLeave = leaveSet.has(day.date) || day.on_leave === true;
 
           return (
             <div
@@ -290,7 +282,7 @@ function AvailabilityGrid({
                             key={`b-${i}`}
                             className="text-[11px] px-1.5 py-1 rounded bg-[var(--color-bg-card)] border border-[var(--color-border)] text-[var(--color-text-muted)]"
                           >
-                            {slot.start}\u2013{slot.end}{' '}
+                            {slot.start}–{slot.end}{' '}
                             <span className="text-[10px]">(booked)</span>
                           </div>
                         ) : (
@@ -298,7 +290,7 @@ function AvailabilityGrid({
                             key={`f-${i}`}
                             className="text-[11px] px-1.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-pointer hover:bg-emerald-500/20 transition-colors"
                           >
-                            \u2713 {slot.start}\u2013{slot.end}{' '}
+                            ✓ {slot.start}–{slot.end}{' '}
                             <span className="text-[10px]">({slot.hours}h free)</span>
                           </div>
                         )
@@ -312,7 +304,7 @@ function AvailabilityGrid({
                   </div>
 
                   <p className="text-[10px] text-[var(--color-text-muted)] mt-1 text-center border-t border-[var(--color-border)] pt-1">
-                    {day.total_free_hours}h free \u00b7 {day.booking_count} bookings
+                    {day.total_free_hours}h free · {day.booking_count} bookings
                   </p>
                 </>
               )}
@@ -387,7 +379,7 @@ function EngineerCard({
               <MapPin className="w-3 h-3" />
               <span>{engineer.area}</span>
               {engineer.area_match && (
-                <span className="text-emerald-400 text-[10px]">\u2713 match</span>
+                <span className="text-emerald-400 text-[10px]">✓ match</span>
               )}
             </div>
 
@@ -461,8 +453,8 @@ function EngineerCard({
         <div className="flex-1 min-w-0">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
             {[
-              { label: 'TRAVEL', value: '\u2014' },
-              { label: '+15min BREAK', value: '\u2014' },
+              { label: 'TRAVEL', value: '—' },
+              { label: '+15min BREAK', value: '—' },
               { label: 'SUGGESTED', value: '~1.5h' },
               { label: 'SET HOURS', value: null },
             ].map((box) => (
@@ -512,283 +504,6 @@ function EngineerCard({
   );
 }
 
-// ── Engineer Search Tab ──
-function EngineerSearchTab({
-  engineers,
-  isLoading,
-  job,
-  onSelectEngineer,
-  onToast,
-}: {
-  engineers: Engineer[];
-  isLoading: boolean;
-  job: Job;
-  onSelectEngineer: (sm8Uuid: string) => void;
-  onToast: (message: string) => void;
-}) {
-  const [query, setQuery] = useState('');
-
-  const filtered = engineers.filter(
-    (e) =>
-      e.display_name.toLowerCase().includes(query.toLowerCase()) ||
-      e.full_name.toLowerCase().includes(query.toLowerCase()) ||
-      e.trades.some((t) => t.toLowerCase().includes(query.toLowerCase()))
-  );
-
-  return (
-    <div className="space-y-4">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)]" />
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search engineer by name or trade..."
-          className="input pl-9 text-sm"
-        />
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="card text-center py-8">
-          <p className="text-sm text-[var(--color-text-muted)]">No engineers found</p>
-        </div>
-      ) : (
-        <div className="grid gap-2">
-          {filtered.map((eng) => {
-            const avatarColor = AVATAR_COLORS[eng.display_name.charCodeAt(0) % AVATAR_COLORS.length];
-            return (
-              <button
-                key={eng.id}
-                onClick={() => onSelectEngineer(eng.sm8_uuid)}
-                className="flex items-center gap-3 p-3 rounded-lg bg-[var(--color-bg-card)] border border-[var(--color-border)] hover:border-[var(--color-border-light)] hover:bg-[var(--color-bg-hover)] transition-all text-left w-full"
-              >
-                <div className={clsx('w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0', avatarColor)}>
-                  {eng.display_name.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-[var(--color-text-primary)]">
-                    {eng.display_name}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-1 mt-0.5">
-                    {eng.trades.map((t) => (
-                      <span
-                        key={t}
-                        className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium bg-[var(--color-bg-hover)] text-[var(--color-text-secondary)]"
-                      >
-                        {t}
-                      </span>
-                    ))}
-                    {eng.certifications.map((c) => (
-                      <span
-                        key={c}
-                        className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium bg-emerald-500/20 text-emerald-400"
-                      >
-                        {c} \u2713
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 text-xs text-[var(--color-text-muted)] flex-shrink-0">
-                  <MapPin className="w-3 h-3" />
-                  {eng.area_display}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Leave Management Tab ──
-function LeaveManagementTab({
-  engineers,
-  onToast,
-}: {
-  engineers: Engineer[];
-  onToast: (message: string) => void;
-}) {
-  const [leaveRecords, setLeaveRecords] = useState<EngineerLeave[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedEngineerId, setSelectedEngineerId] = useState('');
-  const [leaveStart, setLeaveStart] = useState('');
-  const [leaveEnd, setLeaveEnd] = useState('');
-  const [leaveType, setLeaveType] = useState('ANNUAL LEAVE');
-  const [isAdding, setIsAdding] = useState(false);
-
-  const fetchLeave = useCallback(async () => {
-    setIsLoading(true);
-    const today = new Date().toISOString().split('T')[0];
-    const { data, error } = await supabase
-      .from('engineer_leave')
-      .select('*, engineers(display_name, sm8_uuid)')
-      .gte('leave_end', today)
-      .order('leave_start', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching leave:', error);
-    } else {
-      setLeaveRecords(data || []);
-    }
-    setIsLoading(false);
-  }, []);
-
-  useEffect(() => {
-    fetchLeave();
-  }, [fetchLeave]);
-
-  const handleAddLeave = async () => {
-    if (!selectedEngineerId || !leaveStart || !leaveEnd) return;
-    setIsAdding(true);
-    const { error } = await supabase.from('engineer_leave').insert({
-      engineer_id: selectedEngineerId,
-      leave_type: leaveType,
-      leave_start: leaveStart,
-      leave_end: leaveEnd,
-      all_day: true,
-    });
-    if (error) {
-      console.error('Error adding leave:', error);
-      onToast('Failed to add leave');
-    } else {
-      onToast('Leave added successfully');
-      setLeaveStart('');
-      setLeaveEnd('');
-      setSelectedEngineerId('');
-      fetchLeave();
-    }
-    setIsAdding(false);
-  };
-
-  const handleDeleteLeave = async (leaveId: string) => {
-    const { error } = await supabase
-      .from('engineer_leave')
-      .delete()
-      .eq('id', leaveId);
-    if (error) {
-      console.error('Error deleting leave:', error);
-      onToast('Failed to delete leave');
-    } else {
-      onToast('Leave deleted');
-      fetchLeave();
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Add leave form */}
-      <div className="card">
-        <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-3">
-          Add Leave
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          <select
-            value={selectedEngineerId}
-            onChange={(e) => setSelectedEngineerId(e.target.value)}
-            className="input text-sm"
-          >
-            <option value="">Select engineer...</option>
-            {engineers.map((eng) => (
-              <option key={eng.id} value={eng.id}>
-                {eng.display_name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={leaveType}
-            onChange={(e) => setLeaveType(e.target.value)}
-            className="input text-sm"
-          >
-            <option value="ANNUAL LEAVE">Annual Leave</option>
-            <option value="SICK">Sick</option>
-            <option value="TRAINING">Training</option>
-            <option value="OTHER">Other</option>
-          </select>
-          <input
-            type="date"
-            value={leaveStart}
-            onChange={(e) => setLeaveStart(e.target.value)}
-            className="input text-sm"
-            placeholder="Start date"
-          />
-          <input
-            type="date"
-            value={leaveEnd}
-            onChange={(e) => setLeaveEnd(e.target.value)}
-            className="input text-sm"
-            placeholder="End date"
-          />
-          <button
-            onClick={handleAddLeave}
-            disabled={!selectedEngineerId || !leaveStart || !leaveEnd || isAdding}
-            className={clsx(
-              'btn btn-primary text-sm gap-1',
-              (!selectedEngineerId || !leaveStart || !leaveEnd || isAdding) && 'opacity-50 cursor-not-allowed'
-            )}
-          >
-            <Plus className="w-4 h-4" />
-            {isAdding ? 'Adding...' : 'Add Leave'}
-          </button>
-        </div>
-      </div>
-
-      {/* Leave list */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
-        </div>
-      ) : leaveRecords.length === 0 ? (
-        <div className="card text-center py-8">
-          <Calendar className="w-8 h-8 text-[var(--color-text-muted)] mx-auto mb-2" />
-          <p className="text-sm text-[var(--color-text-muted)]">No upcoming leave records</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">
-            Upcoming Leave ({leaveRecords.length})
-          </p>
-          {leaveRecords.map((lr) => (
-            <div
-              key={lr.id}
-              className="flex items-center justify-between gap-3 p-3 rounded-lg bg-[var(--color-bg-card)] border border-[var(--color-border)]"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
-                  <Calendar className="w-4 h-4 text-red-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-[var(--color-text-primary)]">
-                    {lr.engineers?.display_name || 'Unknown'}
-                  </p>
-                  <p className="text-xs text-[var(--color-text-secondary)]">
-                    {lr.leave_type} \u00b7 {formatLeaveRange(lr.leave_start, lr.leave_end)}
-                  </p>
-                  {lr.notes && (
-                    <p className="text-[10px] text-[var(--color-text-muted)] italic mt-0.5">
-                      {lr.notes}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={() => handleDeleteLeave(lr.id)}
-                className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Main component ──
 export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelProps) {
   const [response, setResponse] = useState<EngineerSearchResponse | null>(null);
@@ -801,30 +516,8 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
   const [availabilityScrollIndex, setAvailabilityScrollIndex] = useState<
     Record<string, number>
   >({});
-  const [activeTab, setActiveTab] = useState<PanelTab>('results');
-  const [allEngineers, setAllEngineers] = useState<Engineer[]>([]);
-  const [engineersLoading, setEngineersLoading] = useState(true);
 
   const formatDate = (d: Date) => d.toISOString().split('T')[0];
-
-  // Load all engineers from Supabase
-  useEffect(() => {
-    async function loadEngineers() {
-      setEngineersLoading(true);
-      const { data, error } = await supabase
-        .from('engineers')
-        .select('*')
-        .eq('is_active', true)
-        .order('display_name');
-      if (error) {
-        console.error('Error loading engineers:', error);
-      } else {
-        setAllEngineers(data || []);
-      }
-      setEngineersLoading(false);
-    }
-    loadEngineers();
-  }, []);
 
   const getDateRange = useCallback(
     (preset: DateRangePreset, cFrom?: string, cTo?: string) => {
@@ -850,7 +543,7 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
   );
 
   const fetchEngineers = useCallback(
-    async (preset: DateRangePreset, showAsRefresh = false, specificEngineer?: string) => {
+    async (preset: DateRangePreset, showAsRefresh = false) => {
       if (showAsRefresh) setIsRefreshing(true);
       else setIsLoading(true);
       setError(null);
@@ -870,7 +563,6 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
               job_description: job.job_description,
               postcode: job.postcode,
               priority: job.priority,
-              ...(specificEngineer ? { specific_engineer: specificEngineer } : {}),
               ...range,
             }),
           }
@@ -882,7 +574,6 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
         if (data.error) throw new Error('The engineer matching service returned an error');
 
         setResponse(data);
-        setActiveTab('results');
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Failed to find engineers';
         setError(message);
@@ -923,10 +614,6 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
     }
   };
 
-  const handleSelectSpecificEngineer = (sm8Uuid: string) => {
-    fetchEngineers(datePreset, false, sm8Uuid);
-  };
-
   const getScrollIndex = (staffUuid: string) =>
     availabilityScrollIndex[staffUuid] || 0;
 
@@ -937,12 +624,6 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
   const allResults = [
     ...(response?.matched_engineers || []),
     ...(response?.other_engineers || []),
-  ];
-
-  const tabs: { key: PanelTab; label: string; icon: typeof Users }[] = [
-    { key: 'results', label: 'Results', icon: Users },
-    { key: 'search', label: 'Search Engineer', icon: Search },
-    { key: 'leave', label: 'Manage Leave', icon: Calendar },
   ];
 
   return (
@@ -956,12 +637,12 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
               <h2 className="text-lg font-bold text-white">Find Best Engineer in ServiceM8</h2>
             </div>
             <p className="text-sm text-purple-200/80 mt-0.5">
-              {job.job_ref} \u00b7 {job.trade} \u00b7 {job.postcode}
+              {job.job_ref} · {job.trade} · {job.postcode}
               {response &&
-                ` \u00b7 ${response.total_matched} matched, ${response.total_others} others`}
+                ` · ${response.total_matched} matched, ${response.total_others} others`}
             </p>
             <p className="text-xs text-purple-300/60">
-              Ranked by trade \u00b7 location \u00b7 ServiceM8 availability \u00b7 certifications
+              Ranked by trade · location · ServiceM8 availability · certifications
             </p>
           </div>
           <button
@@ -971,117 +652,74 @@ export default function EngineerPanel({ job, onClose, onToast }: EngineerPanelPr
             <X className="w-5 h-5" />
           </button>
         </div>
-
-        {/* Tabs */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={clsx(
-                'flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-all rounded-t-lg',
-                activeTab === tab.key
-                  ? 'bg-[var(--color-bg-primary)]/80 text-white'
-                  : 'text-purple-200/60 hover:text-white hover:bg-white/5'
-              )}
-            >
-              <tab.icon className="w-3.5 h-3.5" />
-              {tab.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* Results Tab */}
-        {activeTab === 'results' && (
-          <>
-            {/* Date Range Selector */}
-            <DateRangeSelector
-              preset={datePreset}
-              onPresetChange={handlePresetChange}
-              customFrom={customDateFrom}
-              customTo={customDateTo}
-              onCustomFromChange={setCustomDateFrom}
-              onCustomToChange={setCustomDateTo}
-              onApplyCustom={handleApplyCustom}
-              isRefreshing={isRefreshing}
-            />
+        {/* Date Range Selector */}
+        <DateRangeSelector
+          preset={datePreset}
+          onPresetChange={handlePresetChange}
+          customFrom={customDateFrom}
+          customTo={customDateTo}
+          onCustomFromChange={setCustomDateFrom}
+          onCustomToChange={setCustomDateTo}
+          onApplyCustom={handleApplyCustom}
+          isRefreshing={isRefreshing}
+        />
 
-            {/* Loading */}
-            {isLoading && <LoadingState />}
+        {/* Loading */}
+        {isLoading && <LoadingState />}
 
-            {/* Error */}
-            {error && !isLoading && (
-              <ErrorState error={error} onRetry={() => fetchEngineers(datePreset)} />
-            )}
+        {/* Error */}
+        {error && !isLoading && (
+          <ErrorState error={error} onRetry={() => fetchEngineers(datePreset)} />
+        )}
 
-            {/* Results */}
-            {!isLoading && !error && response && (
-              <div className={clsx(isRefreshing && 'opacity-60 pointer-events-none transition-opacity')}>
-                {response.total_matched === 0 && <NoMatchesFallback />}
+        {/* Results */}
+        {!isLoading && !error && response && (
+          <div className={clsx(isRefreshing && 'opacity-60 pointer-events-none transition-opacity')}>
+            {response.total_matched === 0 && <NoMatchesFallback />}
 
-                {response.matched_engineers.length > 0 && (
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
-                      Matched Engineers ({response.total_matched})
-                    </h3>
-                    {response.matched_engineers.map((eng) => (
-                      <EngineerCard
-                        key={eng.staff_uuid}
-                        engineer={eng}
-                        scrollIndex={getScrollIndex(eng.staff_uuid)}
-                        onScrollChange={(idx) => setScrollIndex(eng.staff_uuid, idx)}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {response.other_engineers.length > 0 && (
-                  <div className="space-y-4 mt-8">
-                    <h3 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
-                      Other Available Engineers ({response.total_others})
-                    </h3>
-                    {response.other_engineers.map((eng) => (
-                      <EngineerCard
-                        key={eng.staff_uuid}
-                        engineer={eng}
-                        scrollIndex={getScrollIndex(eng.staff_uuid)}
-                        onScrollChange={(idx) => setScrollIndex(eng.staff_uuid, idx)}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {allResults.length === 0 && (
-                  <div className="card text-center py-8">
-                    <p className="text-sm text-[var(--color-text-muted)]">
-                      No engineers available for this trade and date range.
-                    </p>
-                  </div>
-                )}
+            {response.matched_engineers.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
+                  Matched Engineers ({response.total_matched})
+                </h3>
+                {response.matched_engineers.map((eng) => (
+                  <EngineerCard
+                    key={eng.staff_uuid}
+                    engineer={eng}
+                    scrollIndex={getScrollIndex(eng.staff_uuid)}
+                    onScrollChange={(idx) => setScrollIndex(eng.staff_uuid, idx)}
+                  />
+                ))}
               </div>
             )}
-          </>
-        )}
 
-        {/* Search Tab */}
-        {activeTab === 'search' && (
-          <EngineerSearchTab
-            engineers={allEngineers}
-            isLoading={engineersLoading}
-            job={job}
-            onSelectEngineer={handleSelectSpecificEngineer}
-            onToast={onToast}
-          />
-        )}
+            {response.other_engineers.length > 0 && (
+              <div className="space-y-4 mt-8">
+                <h3 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
+                  Other Available Engineers ({response.total_others})
+                </h3>
+                {response.other_engineers.map((eng) => (
+                  <EngineerCard
+                    key={eng.staff_uuid}
+                    engineer={eng}
+                    scrollIndex={getScrollIndex(eng.staff_uuid)}
+                    onScrollChange={(idx) => setScrollIndex(eng.staff_uuid, idx)}
+                  />
+                ))}
+              </div>
+            )}
 
-        {/* Leave Tab */}
-        {activeTab === 'leave' && (
-          <LeaveManagementTab
-            engineers={allEngineers}
-            onToast={onToast}
-          />
+            {allResults.length === 0 && (
+              <div className="card text-center py-8">
+                <p className="text-sm text-[var(--color-text-muted)]">
+                  No engineers available for this trade and date range.
+                </p>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
