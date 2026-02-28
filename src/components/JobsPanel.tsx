@@ -8,10 +8,27 @@ import {
   Plus,
   Package,
   Wrench,
+  ChevronLeft,
+  ChevronRight,
+  MapPin,
+  Shield,
+  Clock,
+  Phone,
+  Mail,
+  Loader2,
+  AlertCircle,
+  Calendar,
+  X,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { supabase } from '@/lib/supabase';
-import { Job, Material } from '@/types';
+import {
+  Job,
+  Material,
+  Engineer,
+  EngineerAvailabilityResponse,
+  EngineerDayAvailability,
+} from '@/types';
 import EngineerPanel from './EngineerPanel';
 
 // ── Trade config ──
@@ -46,6 +63,171 @@ const SOURCE_CONFIG: Record<string, string> = {
   FIXFLO: 'bg-blue-500/20 text-blue-400',
   OUTLOOK: 'bg-amber-500/20 text-amber-400',
 };
+
+const AVATAR_COLORS = [
+  'bg-blue-500', 'bg-purple-500', 'bg-emerald-500', 'bg-amber-500',
+  'bg-pink-500', 'bg-cyan-500', 'bg-red-500', 'bg-indigo-500',
+];
+
+function formatLeaveRange(start: string, end: string): string {
+  const s = new Date(start + 'T00:00:00');
+  const e = new Date(end + 'T00:00:00');
+  const fmt = (d: Date) =>
+    d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  return s.getTime() === e.getTime() ? fmt(s) : `${fmt(s)} – ${fmt(e)}`;
+}
+
+function SpecificEngineerAvailabilityGrid({
+  availability,
+  leaveDates,
+  scrollIndex,
+  onScrollChange,
+}: {
+  availability: EngineerDayAvailability[];
+  leaveDates: string[];
+  scrollIndex: number;
+  onScrollChange: (idx: number) => void;
+}) {
+  const VISIBLE_DAYS = 3;
+  const maxIndex = Math.max(0, availability.length - VISIBLE_DAYS);
+  const visibleDays = availability.slice(scrollIndex, scrollIndex + VISIBLE_DAYS);
+  const leaveSet = new Set(leaveDates);
+
+  if (availability.length === 0) {
+    return (
+      <p className="text-xs text-[var(--color-text-muted)] text-center py-4">
+        No availability data
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-1">
+      {availability.length > VISIBLE_DAYS && (
+        <button
+          onClick={() => onScrollChange(Math.max(0, scrollIndex - 1))}
+          disabled={scrollIndex === 0}
+          className={clsx(
+            'p-1 rounded mt-6 flex-shrink-0',
+            scrollIndex === 0
+              ? 'text-[var(--color-text-muted)] opacity-30'
+              : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+          )}
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+      )}
+
+      <div
+        className="grid gap-2 flex-1"
+        style={{
+          gridTemplateColumns: `repeat(${Math.min(visibleDays.length, VISIBLE_DAYS)}, minmax(0, 1fr))`,
+        }}
+      >
+        {visibleDays.map((day) => {
+          const isOnLeave = leaveSet.has(day.date) || day.on_leave === true;
+
+          return (
+            <div
+              key={day.date}
+              className={clsx(
+                'rounded-lg p-2 border',
+                isOnLeave
+                  ? 'bg-red-500/5 border-red-500/20'
+                  : 'bg-[var(--color-bg-secondary)] border-[var(--color-border)]'
+              )}
+            >
+              <p
+                className={clsx(
+                  'text-xs font-semibold mb-2 text-center',
+                  isOnLeave
+                    ? 'text-red-400'
+                    : day.is_today
+                    ? 'text-blue-400'
+                    : 'text-[var(--color-text-secondary)]'
+                )}
+              >
+                {day.label}
+                {day.is_today && (
+                  <span className="ml-1 text-[10px] inline-flex items-center px-1.5 py-0 rounded-full bg-blue-500/20 text-blue-400">
+                    TODAY
+                  </span>
+                )}
+                {isOnLeave && (
+                  <span className="ml-1 text-[10px] inline-flex items-center px-1.5 py-0 rounded-full bg-red-500/20 text-red-400">
+                    ON LEAVE
+                  </span>
+                )}
+              </p>
+
+              {isOnLeave ? (
+                <div className="flex flex-col items-center justify-center py-4 text-center">
+                  <Calendar className="w-5 h-5 text-red-400/40 mb-1" />
+                  <p className="text-[10px] text-red-400/60 font-medium">ON LEAVE</p>
+                  <p className="text-[10px] text-[var(--color-text-muted)]">0h free</p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {[
+                      ...day.booked_slots.map((s) => ({ ...s, type: 'booked' as const })),
+                      ...day.free_slots.map((s) => ({ ...s, type: 'free' as const, job_uuid: '' })),
+                    ]
+                      .sort((a, b) => a.start.localeCompare(b.start))
+                      .map((slot, i) =>
+                        slot.type === 'booked' ? (
+                          <div
+                            key={`b-${i}`}
+                            className="text-[11px] px-1.5 py-1 rounded bg-[var(--color-bg-card)] border border-[var(--color-border)] text-[var(--color-text-muted)]"
+                          >
+                            {slot.start}–{slot.end}{' '}
+                            <span className="text-[10px]">(booked)</span>
+                          </div>
+                        ) : (
+                          <div
+                            key={`f-${i}`}
+                            className="text-[11px] px-1.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-pointer hover:bg-emerald-500/20 transition-colors"
+                          >
+                            ✓ {slot.start}–{slot.end}{' '}
+                            <span className="text-[10px]">({slot.hours}h free)</span>
+                          </div>
+                        )
+                      )}
+
+                    {day.free_slots.length === 0 && day.booked_slots.length === 0 && (
+                      <p className="text-[10px] text-[var(--color-text-muted)] text-center py-2">
+                        No data
+                      </p>
+                    )}
+                  </div>
+
+                  <p className="text-[10px] text-[var(--color-text-muted)] mt-1 text-center border-t border-[var(--color-border)] pt-1">
+                    {day.total_free_hours}h free · {day.booking_count} bookings
+                  </p>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {availability.length > VISIBLE_DAYS && (
+        <button
+          onClick={() => onScrollChange(Math.min(maxIndex, scrollIndex + 1))}
+          disabled={scrollIndex >= maxIndex}
+          className={clsx(
+            'p-1 rounded mt-6 flex-shrink-0',
+            scrollIndex >= maxIndex
+              ? 'text-[var(--color-text-muted)] opacity-30'
+              : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+          )}
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
+}
 
 function formatTime(dateStr: string): string {
   try {
@@ -126,6 +308,17 @@ export default function JobsPanel() {
   const [toast, setToast] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false); // mobile detail view
   const [showEngineerPanel, setShowEngineerPanel] = useState(false);
+
+  // Search Specific Engineer state
+  const [allEngineers, setAllEngineers] = useState<Engineer[]>([]);
+  const [engineerQuery, setEngineerQuery] = useState('');
+  const [showEngineerDropdown, setShowEngineerDropdown] = useState(false);
+  const [specificEngineer, setSpecificEngineer] = useState<Engineer | null>(null);
+  const [specificAvailability, setSpecificAvailability] = useState<EngineerAvailabilityResponse | null>(null);
+  const [specificLoading, setSpecificLoading] = useState(false);
+  const [specificError, setSpecificError] = useState<string | null>(null);
+  const [specificScrollIndex, setSpecificScrollIndex] = useState(0);
+  const engineerSearchRef = useRef<HTMLDivElement>(null);
 
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const selectedJobRef = useRef<string | null>(null);
@@ -247,6 +440,102 @@ export default function JobsPanel() {
       supabase.removeChannel(channel);
     };
   }, [fetchJobs, fetchStats, fetchMaterials, searchQuery]);
+
+  // ── Load engineers for search ──
+  useEffect(() => {
+    async function loadEngineers() {
+      const { data, error } = await supabase
+        .from('engineers')
+        .select('*')
+        .eq('is_active', true)
+        .order('display_name');
+      if (!error && data) {
+        setAllEngineers(data);
+      }
+    }
+    loadEngineers();
+  }, []);
+
+  // ── Close engineer dropdown on outside click ──
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (engineerSearchRef.current && !engineerSearchRef.current.contains(e.target as Node)) {
+        setShowEngineerDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // ── Clear specific engineer when job changes ──
+  useEffect(() => {
+    setSpecificEngineer(null);
+    setSpecificAvailability(null);
+    setSpecificError(null);
+    setEngineerQuery('');
+  }, [selectedJob?.id]);
+
+  // ── Fetch specific engineer availability ──
+  const fetchSpecificAvailability = useCallback(
+    async (engineer: Engineer, job: Job) => {
+      setSpecificLoading(true);
+      setSpecificError(null);
+      setSpecificScrollIndex(0);
+
+      try {
+        const res = await fetch(
+          'https://n8n.srv1177154.hstgr.cloud/webhook/engineer-availability',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              staff_uuid: engineer.sm8_uuid,
+              days: 7,
+              job_ref: job.job_ref,
+              trade: job.trade,
+              postcode: job.postcode,
+            }),
+          }
+        );
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data: EngineerAvailabilityResponse = await res.json();
+        if (data.error) throw new Error('Availability service returned an error');
+
+        setSpecificAvailability(data);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to load availability';
+        setSpecificError(message);
+      } finally {
+        setSpecificLoading(false);
+      }
+    },
+    []
+  );
+
+  const handleSelectSpecificEngineer = (engineer: Engineer) => {
+    setSpecificEngineer(engineer);
+    setEngineerQuery(engineer.display_name);
+    setShowEngineerDropdown(false);
+    if (selectedJob) {
+      fetchSpecificAvailability(engineer, selectedJob);
+    }
+  };
+
+  const handleClearSpecificEngineer = () => {
+    setSpecificEngineer(null);
+    setSpecificAvailability(null);
+    setSpecificError(null);
+    setEngineerQuery('');
+  };
+
+  const filteredEngineers = allEngineers.filter(
+    (e) =>
+      e.display_name.toLowerCase().includes(engineerQuery.toLowerCase()) ||
+      e.full_name.toLowerCase().includes(engineerQuery.toLowerCase()) ||
+      e.trades.some((t) => t.toLowerCase().includes(engineerQuery.toLowerCase()))
+  );
 
   // ── Toast helper ──
   const showToast = (message: string) => {
@@ -626,6 +915,205 @@ export default function JobsPanel() {
                 <span className="w-2 h-2 rounded-full bg-white" />
                 Find Best Engineer in ServiceM8
               </button>
+
+              {/* Search Specific Engineer */}
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-2">
+                  <Search className="w-3.5 h-3.5 inline-block mr-1 -mt-0.5" />
+                  Search Specific Engineer
+                </p>
+
+                <div ref={engineerSearchRef} className="relative">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)]" />
+                    <input
+                      type="text"
+                      value={engineerQuery}
+                      onChange={(e) => {
+                        setEngineerQuery(e.target.value);
+                        setShowEngineerDropdown(true);
+                        if (specificEngineer) {
+                          setSpecificEngineer(null);
+                          setSpecificAvailability(null);
+                          setSpecificError(null);
+                        }
+                      }}
+                      onFocus={() => {
+                        if (!specificEngineer) setShowEngineerDropdown(true);
+                      }}
+                      placeholder="Type engineer name or trade..."
+                      className="input pl-9 pr-9 text-sm"
+                    />
+                    {(engineerQuery || specificEngineer) && (
+                      <button
+                        onClick={handleClearSpecificEngineer}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Dropdown */}
+                  {showEngineerDropdown && engineerQuery && !specificEngineer && (
+                    <div className="absolute z-20 w-full mt-1 bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {filteredEngineers.length === 0 ? (
+                        <p className="text-sm text-[var(--color-text-muted)] p-3 text-center">
+                          No engineers found
+                        </p>
+                      ) : (
+                        filteredEngineers.map((eng) => {
+                          const avatarColor = AVATAR_COLORS[eng.display_name.charCodeAt(0) % AVATAR_COLORS.length];
+                          return (
+                            <button
+                              key={eng.id}
+                              onClick={() => handleSelectSpecificEngineer(eng)}
+                              className="flex items-center gap-3 w-full p-3 text-left hover:bg-[var(--color-bg-hover)] transition-colors border-b border-[var(--color-border)] last:border-b-0"
+                            >
+                              <div className={clsx('w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0', avatarColor)}>
+                                {eng.display_name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+                                  {eng.display_name}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                                  {eng.trades.map((t) => (
+                                    <span key={t} className="text-[10px] text-[var(--color-text-muted)]">{t}</span>
+                                  ))}
+                                </div>
+                              </div>
+                              <span className="text-xs text-[var(--color-text-muted)] flex-shrink-0">
+                                {eng.area_display}
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Loading state */}
+                {specificLoading && (
+                  <div className="flex flex-col items-center justify-center py-8 mt-3">
+                    <Loader2 className="w-6 h-6 animate-spin text-purple-400 mb-2" />
+                    <p className="text-sm text-[var(--color-text-secondary)]">
+                      Loading availability from ServiceM8...
+                    </p>
+                  </div>
+                )}
+
+                {/* Error state */}
+                {specificError && !specificLoading && (
+                  <div className="mt-3 bg-red-500/5 border border-red-500/20 rounded-lg p-4 text-center">
+                    <AlertCircle className="w-6 h-6 text-red-400 mx-auto mb-2" />
+                    <p className="text-sm text-red-400 mb-2">{specificError}</p>
+                    <button
+                      onClick={() => specificEngineer && selectedJob && fetchSpecificAvailability(specificEngineer, selectedJob)}
+                      className="btn btn-primary text-sm px-4"
+                    >
+                      Try Again
+                    </button>
+                  </div>
+                )}
+
+                {/* Engineer Availability Card */}
+                {!specificLoading && !specificError && specificEngineer && specificAvailability && (
+                  <div className="mt-3 card card-hover animate-fade-in">
+                    <div className="flex items-start gap-3 mb-4">
+                      <div
+                        className={clsx(
+                          'w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 relative',
+                          AVATAR_COLORS[specificEngineer.display_name.charCodeAt(0) % AVATAR_COLORS.length]
+                        )}
+                      >
+                        {specificEngineer.display_name.charAt(0).toUpperCase()}
+                        {specificAvailability.engineer.on_leave_today && (
+                          <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-500 border-2 border-[var(--color-bg-card)]" />
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold text-[var(--color-text-primary)]">
+                            {specificAvailability.engineer.name}
+                          </h3>
+                          {specificAvailability.engineer.on_leave_today && (
+                            <span className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium bg-red-500/20 text-red-400 border border-red-500/30">
+                              ON LEAVE
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)] mt-0.5">
+                          <MapPin className="w-3 h-3" />
+                          <span>{specificAvailability.engineer.area}</span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-[var(--color-text-muted)]">
+                          {specificEngineer.mobile && (
+                            <a href={`tel:${specificEngineer.mobile}`} className="flex items-center gap-1 hover:text-emerald-400 transition-colors">
+                              <Phone className="w-3 h-3" /> {specificEngineer.mobile}
+                            </a>
+                          )}
+                          {specificEngineer.email && (
+                            <a href={`mailto:${specificEngineer.email}`} className="flex items-center gap-1 hover:text-blue-400 transition-colors truncate">
+                              <Mail className="w-3 h-3" /> {specificEngineer.email}
+                            </a>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {specificAvailability.engineer.trades.map((t) => (
+                            <span key={t} className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium bg-[var(--color-bg-hover)] text-[var(--color-text-secondary)]">
+                              {t}
+                            </span>
+                          ))}
+                          {specificAvailability.engineer.certifications.map((c) => (
+                            <span key={c} className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium bg-emerald-500/20 text-emerald-400">
+                              <Shield className="w-2.5 h-2.5 mr-0.5" /> {c}
+                            </span>
+                          ))}
+                        </div>
+
+                        {/* Leave periods */}
+                        {specificAvailability.engineer.leave_periods.length > 0 && (
+                          <div className="mt-1.5">
+                            {specificAvailability.engineer.leave_periods.map((lp, i) => (
+                              <p key={i} className="text-[10px] text-amber-400 flex items-center gap-1">
+                                <Calendar className="w-2.5 h-2.5" />
+                                {lp.leave_type}: {formatLeaveRange(lp.leave_start, lp.leave_end)}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Week summary */}
+                    <div className="flex items-center gap-4 mb-3 text-xs text-[var(--color-text-secondary)]">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        Week: {specificAvailability.week_summary.total_free_hours}h free
+                      </span>
+                      <span>Today: {specificAvailability.week_summary.today_free_hours}h free</span>
+                    </div>
+
+                    {/* Availability grid */}
+                    <SpecificEngineerAvailabilityGrid
+                      availability={specificAvailability.availability}
+                      leaveDates={specificAvailability.engineer.leave_dates || []}
+                      scrollIndex={specificScrollIndex}
+                      onScrollChange={setSpecificScrollIndex}
+                    />
+
+                    <p className="text-xs text-purple-400 mt-2 text-center opacity-70">
+                      Click a free slot to assign this engineer
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
