@@ -19,6 +19,7 @@ import {
   AlertCircle,
   Calendar,
   X,
+  CheckCircle,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { supabase } from '@/lib/supabase';
@@ -77,16 +78,26 @@ function formatLeaveRange(start: string, end: string): string {
   return s.getTime() === e.getTime() ? fmt(s) : `${fmt(s)} – ${fmt(e)}`;
 }
 
+interface SlotAssignment {
+  staff_uuid: string;
+  staff_name: string;
+  slot_date: string;
+  slot_start: string;
+  slot_end: string;
+}
+
 function SpecificEngineerAvailabilityGrid({
   availability,
   leaveDates,
   scrollIndex,
   onScrollChange,
+  onSlotClick,
 }: {
   availability: EngineerDayAvailability[];
   leaveDates: string[];
   scrollIndex: number;
   onScrollChange: (idx: number) => void;
+  onSlotClick?: (date: string, slotStart: string, slotEnd: string, slotHours: number) => void;
 }) {
   const VISIBLE_DAYS = 3;
   const maxIndex = Math.max(0, availability.length - VISIBLE_DAYS);
@@ -184,13 +195,15 @@ function SpecificEngineerAvailabilityGrid({
                             <span className="text-[10px]">(booked)</span>
                           </div>
                         ) : (
-                          <div
+                          <button
                             key={`f-${i}`}
-                            className="text-[11px] px-1.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-pointer hover:bg-emerald-500/20 transition-colors"
+                            onClick={() => onSlotClick?.(day.date, slot.start, slot.end, slot.hours)}
+                            title={`Assign on ${day.label} ${slot.start}–${slot.end}`}
+                            className="text-[11px] px-1.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-pointer hover:bg-emerald-500/20 transition-colors w-full text-left"
                           >
                             ✓ {slot.start}–{slot.end}{' '}
                             <span className="text-[10px]">({slot.hours}h free)</span>
-                          </div>
+                          </button>
                         )
                       )}
 
@@ -319,6 +332,10 @@ export default function JobsPanel() {
   const [specificError, setSpecificError] = useState<string | null>(null);
   const [specificScrollIndex, setSpecificScrollIndex] = useState(0);
   const engineerSearchRef = useRef<HTMLDivElement>(null);
+
+  // Assignment state
+  const [pendingAssignment, setPendingAssignment] = useState<SlotAssignment | null>(null);
+  const [isAssigning, setIsAssigning] = useState(false);
 
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const selectedJobRef = useRef<string | null>(null);
@@ -530,6 +547,95 @@ export default function JobsPanel() {
     setEngineerQuery('');
   };
 
+  // ── Assign engineer to job ──
+  const handleSlotClickFromSpecific = (date: string, start: string, end: string) => {
+    if (!specificEngineer || !specificAvailability) return;
+    setPendingAssignment({
+      staff_uuid: specificEngineer.sm8_uuid,
+      staff_name: specificAvailability.engineer.name,
+      slot_date: date,
+      slot_start: start,
+      slot_end: end,
+    });
+  };
+
+  const handleConfirmAssign = async () => {
+    if (!pendingAssignment || !selectedJob) return;
+    setIsAssigning(true);
+
+    try {
+      const res = await fetch(
+        'https://n8n.srv1177154.hstgr.cloud/webhook/assign-engineer',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            staff_uuid: pendingAssignment.staff_uuid,
+            staff_name: pendingAssignment.staff_name,
+            slot_date: pendingAssignment.slot_date,
+            slot_start: pendingAssignment.slot_start,
+            slot_end: pendingAssignment.slot_end,
+            job_ref: selectedJob.job_ref,
+            job_title: selectedJob.job_title,
+            job_description: selectedJob.job_description,
+            instruction_notes: selectedJob.instruction_notes,
+            property_address: selectedJob.property_address,
+            postcode: selectedJob.postcode,
+            trade: selectedJob.trade,
+            priority: selectedJob.priority,
+            tenant_name: selectedJob.tenant_name,
+            tenant_phone: selectedJob.tenant_phone,
+            tenant_email: selectedJob.tenant_email,
+          }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (data.error) {
+        showToast(`Assignment failed: ${data.message}`);
+      } else {
+        const slotDate = new Date(pendingAssignment.slot_date + 'T00:00:00');
+        const formattedDate = slotDate.toLocaleDateString('en-GB', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+        });
+        showToast(
+          `✓ Assigned to ${data.assigned_to} — ${formattedDate} ${data.scheduled.start}–${data.scheduled.end}`
+        );
+        updateJobLocally(selectedJob.job_ref, 'ASSIGNED', pendingAssignment.staff_name);
+        handleClearSpecificEngineer();
+        setShowEngineerPanel(false);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Network error';
+      showToast(`Failed to assign engineer: ${message}`);
+    } finally {
+      setIsAssigning(false);
+      setPendingAssignment(null);
+    }
+  };
+
+  const handleJobAssignedFromPanel = (jobRef: string, engineerName: string) => {
+    updateJobLocally(jobRef, 'ASSIGNED', engineerName);
+  };
+
+  const updateJobLocally = (jobRef: string, newStatus: string, engineerName: string) => {
+    setJobs((prev) =>
+      prev.map((j) =>
+        j.job_ref === jobRef
+          ? { ...j, status: newStatus, assigned_engineer: engineerName }
+          : j
+      )
+    );
+    if (selectedJob && selectedJob.job_ref === jobRef) {
+      setSelectedJob((prev) =>
+        prev ? { ...prev, status: newStatus, assigned_engineer: engineerName } : prev
+      );
+    }
+  };
+
   const filteredEngineers = allEngineers.filter(
     (e) =>
       e.display_name.toLowerCase().includes(engineerQuery.toLowerCase()) ||
@@ -611,7 +717,71 @@ export default function JobsPanel() {
           job={selectedJob}
           onClose={() => setShowEngineerPanel(false)}
           onToast={showToast}
+          onJobAssigned={handleJobAssignedFromPanel}
         />
+      )}
+
+      {/* Assignment Confirmation Dialog */}
+      {pendingAssignment && selectedJob && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl animate-fade-in">
+            {isAssigning ? (
+              <div className="flex flex-col items-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-purple-400 mb-4" />
+                <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                  Creating job in ServiceM8 and scheduling to {pendingAssignment.staff_name}...
+                </p>
+              </div>
+            ) : (
+              <>
+                <h3 className="text-lg font-bold text-[var(--color-text-primary)] mb-4">
+                  Assign this job to {pendingAssignment.staff_name}?
+                </h3>
+
+                <div className="space-y-2 mb-6">
+                  <div className="flex items-start gap-2 text-sm">
+                    <span className="text-[var(--color-text-muted)] w-16 flex-shrink-0">Job:</span>
+                    <span className="text-[var(--color-text-primary)] font-medium">
+                      {selectedJob.job_title} ({selectedJob.job_ref})
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 text-sm">
+                    <span className="text-[var(--color-text-muted)] w-16 flex-shrink-0">Address:</span>
+                    <span className="text-[var(--color-text-secondary)]">
+                      {selectedJob.property_address}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 text-sm">
+                    <span className="text-[var(--color-text-muted)] w-16 flex-shrink-0">Time:</span>
+                    <span className="text-[var(--color-text-secondary)]">
+                      {new Date(pendingAssignment.slot_date + 'T00:00:00').toLocaleDateString('en-GB', {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short',
+                      })}, {pendingAssignment.slot_start} – {pendingAssignment.slot_end}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setPendingAssignment(null)}
+                    className="btn btn-secondary flex-1 py-2.5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmAssign}
+                    className="flex-1 py-2.5 rounded-lg font-semibold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 transition-all flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Confirm & Assign
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       <div className="flex flex-col lg:flex-row gap-0 lg:gap-0" style={{ height: 'calc(100vh - 200px)' }}>
@@ -724,12 +894,22 @@ export default function JobsPanel() {
                       {job.job_title}
                     </p>
 
-                    {/* Trade + postcode */}
-                    <div className="flex items-center gap-2">
+                    {/* Trade + postcode + status */}
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className={clsx('badge text-[10px] px-1.5 py-0', t.color)}>
                         {t.icon} {job.trade}
                       </span>
                       <span className="text-xs text-[var(--color-text-muted)]">📍 {job.postcode}</span>
+                      {job.assigned_engineer && job.status === 'ASSIGNED' && (
+                        <span className="badge text-[10px] px-1.5 py-0 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 ml-auto flex items-center gap-1">
+                          👷 {job.assigned_engineer} · ASSIGNED ✓
+                        </span>
+                      )}
+                      {!job.assigned_engineer && job.status === 'UNASSIGNED' && (
+                        <span className="badge text-[10px] px-1.5 py-0 bg-red-500/10 text-red-400 border border-red-500/20 ml-auto">
+                          UNASSIGNED
+                        </span>
+                      )}
                     </div>
 
                     {/* Address */}
@@ -784,14 +964,22 @@ export default function JobsPanel() {
                     {priority(selectedJob.priority).dot} {selectedJob.priority}
                   </span>
                 </div>
-                <span
-                  className={clsx(
-                    'badge text-xs px-3 py-1',
-                    status(selectedJob.status)
+                <div className="flex items-center gap-2">
+                  {selectedJob.assigned_engineer && (
+                    <span className="badge text-xs px-2 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                      👷 {selectedJob.assigned_engineer}
+                    </span>
                   )}
-                >
-                  {selectedJob.status.replace('_', ' ')}
-                </span>
+                  <span
+                    className={clsx(
+                      'badge text-xs px-3 py-1',
+                      status(selectedJob.status)
+                    )}
+                  >
+                    {selectedJob.status.replace('_', ' ')}
+                    {selectedJob.status === 'ASSIGNED' && ' ✓'}
+                  </span>
+                </div>
               </div>
 
               {/* Job Title */}
@@ -1106,6 +1294,7 @@ export default function JobsPanel() {
                       leaveDates={specificAvailability.engineer.leave_dates || []}
                       scrollIndex={specificScrollIndex}
                       onScrollChange={setSpecificScrollIndex}
+                      onSlotClick={handleSlotClickFromSpecific}
                     />
 
                     <p className="text-xs text-purple-400 mt-2 text-center opacity-70">
