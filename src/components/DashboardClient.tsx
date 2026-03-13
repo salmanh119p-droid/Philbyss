@@ -35,8 +35,9 @@ import { DashboardData } from '@/types';
 import MaterialSearch from '@/components/MaterialSearch';
 import JobsPanel from '@/components/JobsPanel';
 import ManageLeavePage from '@/components/ManageLeavePage';
+import VanFinesPage from '@/components/VanFinesPage';
 
-type TabType = 'overview' | 'invoices' | 'payroll' | 'materials' | 'jobs' | 'leave';
+type TabType = 'overview' | 'invoices' | 'payroll' | 'materials' | 'jobs' | 'leave' | 'fines';
 
 export default function DashboardClient() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -104,6 +105,7 @@ export default function DashboardClient() {
     { id: 'materials' as TabType, label: 'Material Search', icon: Search },
     { id: 'jobs' as TabType, label: 'Jobs', icon: ClipboardList },
     { id: 'leave' as TabType, label: 'Manage Leave', icon: Calendar },
+    { id: 'fines' as TabType, label: 'Van Fines', icon: Car },
   ];
 
   if (isLoading) {
@@ -374,6 +376,10 @@ export default function DashboardClient() {
 
         {activeTab === 'leave' && (
           <ManageLeavePage />
+        )}
+
+        {activeTab === 'fines' && (
+          <VanFinesPage />
         )}
       </main>
 
