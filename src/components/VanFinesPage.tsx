@@ -10,9 +10,7 @@ import {
   Check,
   X,
   Loader2,
-  AlertCircle,
   ExternalLink,
-  Image as ImageIcon,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { supabase } from '@/lib/supabase';
@@ -30,6 +28,12 @@ const parseFineAmount = (amount: string): number => {
 const SUPABASE_URL = 'https://cvrdxkwrteuhlxzdryab.supabase.co';
 const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2cmR4a3dydGV1aGx4emRyeWFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwMzQ3NDMsImV4cCI6MjA4NzYxMDc0M30.gIyzC-2wk2jce6vKzVVykP9O4oMxlXUXV-zkB5PQIzg';
+
+const SUPABASE_HEADERS = {
+  'Content-Type': 'application/json',
+  apikey: SUPABASE_ANON_KEY,
+  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+};
 
 interface VanFine {
   id?: string;
@@ -69,6 +73,10 @@ export default function VanFinesPage() {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Fine inline editing state
+  const [editingFineId, setEditingFineId] = useState<string | null>(null);
+  const [editFine, setEditFine] = useState<Partial<VanFine>>({});
+
   // Manage Vehicles state
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(true);
@@ -84,6 +92,14 @@ export default function VanFinesPage() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 5000);
   };
+
+  // Build engineer name options (engineers + vehicle registry names)
+  const engineerNameOptions = (() => {
+    const names = new Set<string>();
+    allEngineers.forEach((e) => names.add(e.display_name));
+    vehicles.forEach((v) => { if (v.engineer_name) names.add(v.engineer_name); });
+    return Array.from(names).sort();
+  })();
 
   // ── Load fines ──
   const fetchFines = useCallback(async () => {
@@ -152,7 +168,6 @@ export default function VanFinesPage() {
   const uploadFine = async (file: File) => {
     setIsProcessing(true);
     try {
-      // 1. Upload to Supabase Storage
       const fileName = `${Date.now()}_${file.name}`;
       const storagePath = `fines/${fileName}`;
 
@@ -175,7 +190,6 @@ export default function VanFinesPage() {
 
       const imageUrl = `${SUPABASE_URL}/storage/v1/object/public/van-fines/${storagePath}`;
 
-      // 2. Send to n8n as multipart/form-data (binary)
       const formData = new FormData();
       formData.append('Document', file);
 
@@ -218,6 +232,46 @@ export default function VanFinesPage() {
     setIsDragOver(false);
     const file = e.dataTransfer.files[0];
     if (file) uploadFine(file);
+  };
+
+  // ── Fine inline editing ──
+  const startEditFine = (fine: VanFine) => {
+    setEditingFineId(fine.id || null);
+    setEditFine({
+      vehicle_reg: fine.vehicle_reg,
+      fine_amount: fine.fine_amount,
+      issue_date: fine.issue_date,
+      reference_number: fine.reference_number,
+      assigned_engineer: fine.assigned_engineer,
+    });
+  };
+
+  const cancelEditFine = () => {
+    setEditingFineId(null);
+    setEditFine({});
+  };
+
+  const saveEditFine = async () => {
+    if (!editingFineId) return;
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/van_fines?id=eq.${editingFineId}`, {
+        method: 'PATCH',
+        headers: SUPABASE_HEADERS,
+        body: JSON.stringify({
+          vehicle_reg: editFine.vehicle_reg,
+          fine_amount: editFine.fine_amount,
+          issue_date: editFine.issue_date,
+          reference_number: editFine.reference_number,
+          assigned_engineer: editFine.assigned_engineer,
+        }),
+      });
+      setEditingFineId(null);
+      setEditFine({});
+      fetchFines();
+      showToast('Fine updated', 'success');
+    } catch {
+      showToast('Failed to update fine', 'error');
+    }
   };
 
   // ── Add vehicle ──
@@ -452,80 +506,175 @@ export default function VanFinesPage() {
                       <th className="text-left py-3 px-3 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">
                         Image
                       </th>
+                      <th className="text-left py-3 px-3 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {fines.map((fine, i) => (
-                      <tr
-                        key={fine.id || i}
-                        className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] transition-colors"
-                      >
-                        <td className="py-3 px-3 text-[var(--color-text-secondary)]">
-                          {fine.issue_date || '—'}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="font-mono font-semibold text-[var(--color-text-primary)]">
-                            {fine.vehicle_reg}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3">
-                          <span
-                            className={clsx(
-                              'font-medium',
-                              fine.assigned_engineer === 'UNKNOWN'
-                                ? 'text-amber-400'
-                                : 'text-[var(--color-text-primary)]'
+                    {fines.map((fine, i) => {
+                      const isEditing = editingFineId === fine.id;
+                      return (
+                        <tr
+                          key={fine.id || i}
+                          className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] transition-colors"
+                        >
+                          {/* Date */}
+                          <td className="py-3 px-3 text-[var(--color-text-secondary)]">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={editFine.issue_date || ''}
+                                onChange={(e) => setEditFine((p) => ({ ...p, issue_date: e.target.value }))}
+                                className="input text-sm w-28"
+                              />
+                            ) : (
+                              fine.issue_date || '—'
                             )}
-                          >
-                            {fine.assigned_engineer}
-                            {fine.assigned_engineer === 'UNKNOWN' && (
-                              <span className="ml-1 text-[10px] text-amber-400/60">
-                                (not matched)
+                          </td>
+                          {/* Reg */}
+                          <td className="py-3 px-3">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={editFine.vehicle_reg || ''}
+                                onChange={(e) => setEditFine((p) => ({ ...p, vehicle_reg: e.target.value.toUpperCase() }))}
+                                className="input text-sm uppercase font-mono w-24"
+                              />
+                            ) : (
+                              <span className="font-mono font-semibold text-[var(--color-text-primary)]">
+                                {fine.vehicle_reg}
                               </span>
                             )}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 font-semibold text-red-400">
-                          {fine.fine_amount}
-                        </td>
-                        <td className="py-3 px-3 text-amber-400">
-                          £{ADMIN_FEE.toFixed(2)}
-                        </td>
-                        <td className="py-3 px-3 font-bold text-[var(--color-text-primary)]">
-                          £{(parseFineAmount(fine.fine_amount) + ADMIN_FEE).toFixed(2)}
-                        </td>
-                        <td className="py-3 px-3 text-[var(--color-text-muted)] font-mono text-xs">
-                          {fine.reference_number || '—'}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span
-                            className={clsx(
-                              'badge text-[10px] px-2 py-0.5',
-                              fine.status === 'PROCESSED'
-                                ? 'bg-emerald-500/20 text-emerald-400'
-                                : 'bg-amber-500/20 text-amber-400'
+                          </td>
+                          {/* Engineer */}
+                          <td className="py-3 px-3">
+                            {isEditing ? (
+                              <select
+                                value={editFine.assigned_engineer || ''}
+                                onChange={(e) => setEditFine((p) => ({ ...p, assigned_engineer: e.target.value }))}
+                                className="input text-sm w-40"
+                              >
+                                <option value="">Select...</option>
+                                {engineerNameOptions.map((name) => (
+                                  <option key={name} value={name}>
+                                    {name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span
+                                className={clsx(
+                                  'font-medium',
+                                  fine.assigned_engineer === 'UNKNOWN'
+                                    ? 'text-amber-400'
+                                    : 'text-[var(--color-text-primary)]'
+                                )}
+                              >
+                                {fine.assigned_engineer}
+                                {fine.assigned_engineer === 'UNKNOWN' && (
+                                  <span className="ml-1 text-[10px] text-amber-400/60">
+                                    (not matched)
+                                  </span>
+                                )}
+                              </span>
                             )}
-                          >
-                            {fine.status || 'PENDING'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3">
-                          {fine.image_url ? (
-                            <a
-                              href={fine.image_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors"
+                          </td>
+                          {/* Fine */}
+                          <td className="py-3 px-3">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={editFine.fine_amount || ''}
+                                onChange={(e) => setEditFine((p) => ({ ...p, fine_amount: e.target.value }))}
+                                className="input text-sm w-24"
+                              />
+                            ) : (
+                              <span className="font-semibold text-red-400">{fine.fine_amount}</span>
+                            )}
+                          </td>
+                          {/* Admin Fee */}
+                          <td className="py-3 px-3 text-amber-400">
+                            £{ADMIN_FEE.toFixed(2)}
+                          </td>
+                          {/* Total Due */}
+                          <td className="py-3 px-3 font-bold text-[var(--color-text-primary)]">
+                            £{(parseFineAmount(isEditing ? (editFine.fine_amount || '0') : fine.fine_amount) + ADMIN_FEE).toFixed(2)}
+                          </td>
+                          {/* Reference */}
+                          <td className="py-3 px-3 text-[var(--color-text-muted)] font-mono text-xs">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={editFine.reference_number || ''}
+                                onChange={(e) => setEditFine((p) => ({ ...p, reference_number: e.target.value }))}
+                                className="input text-sm w-32"
+                              />
+                            ) : (
+                              fine.reference_number || '—'
+                            )}
+                          </td>
+                          {/* Status */}
+                          <td className="py-3 px-3">
+                            <span
+                              className={clsx(
+                                'badge text-[10px] px-2 py-0.5',
+                                fine.status === 'PROCESSED'
+                                  ? 'bg-emerald-500/20 text-emerald-400'
+                                  : 'bg-amber-500/20 text-amber-400'
+                              )}
                             >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                              <span className="text-xs">View</span>
-                            </a>
-                          ) : (
-                            <span className="text-[var(--color-text-muted)]">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                              {fine.status || 'PENDING'}
+                            </span>
+                          </td>
+                          {/* Image */}
+                          <td className="py-3 px-3">
+                            {fine.image_url ? (
+                              <a
+                                href={fine.image_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                                <span className="text-xs">View</span>
+                              </a>
+                            ) : (
+                              <span className="text-[var(--color-text-muted)]">—</span>
+                            )}
+                          </td>
+                          {/* Actions */}
+                          <td className="py-3 px-3">
+                            {isEditing ? (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={saveEditFine}
+                                  className="p-1.5 rounded-lg text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                                  title="Save"
+                                >
+                                  <Check className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={cancelEditFine}
+                                  className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] transition-colors"
+                                  title="Cancel"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : fine.id ? (
+                              <button
+                                onClick={() => startEditFine(fine)}
+                                className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
+                                title="Edit"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -619,7 +768,6 @@ export default function VanFinesPage() {
                     className="flex items-center gap-3 p-3 rounded-lg bg-[var(--color-bg-card)] border border-[var(--color-border)] hover:border-[var(--color-border-light)] transition-all"
                   >
                     {editingId === vehicle.id ? (
-                      /* Edit mode */
                       <>
                         <input
                           type="text"
@@ -655,7 +803,6 @@ export default function VanFinesPage() {
                         </button>
                       </>
                     ) : (
-                      /* Display mode */
                       <>
                         <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0">
                           <Car className="w-4 h-4 text-blue-400" />
