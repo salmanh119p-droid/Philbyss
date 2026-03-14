@@ -63,20 +63,43 @@ export default function MaterialSearch() {
     setSearchData(null);
 
     try {
-      const res = await fetch('/api/material-search', {
+      const res = await fetch('https://n8n.srv1177154.hstgr.cloud/webhook/material-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: q }),
       });
 
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        setError(data.error || 'Search failed. Please try again.');
+      if (!res.ok) {
+        setError('Supplier search failed. Please try again.');
         return;
       }
 
-      setSearchData(data);
+      const raw = await res.json();
+
+      // n8n may return: [{ message: { content: "<JSON string>" } }]
+      // or direct object with query_optimized, results, etc.
+      let parsed: MaterialSearchResponse;
+
+      if (Array.isArray(raw) && raw[0]?.message?.content) {
+        const content = raw[0].message.content;
+        parsed = typeof content === 'string' ? JSON.parse(content) : content;
+      } else if (raw.query_optimized) {
+        parsed = raw;
+      } else {
+        setError('Unexpected response format from search service.');
+        return;
+      }
+
+      // results might also be a JSON string
+      if (typeof parsed.results === 'string') {
+        parsed.results = JSON.parse(parsed.results);
+      }
+
+      if (!Array.isArray(parsed.results)) {
+        parsed.results = [];
+      }
+
+      setSearchData(parsed);
     } catch {
       setError('Failed to connect. Please check your connection and try again.');
     } finally {
@@ -98,6 +121,7 @@ export default function MaterialSearch() {
             <div className="relative flex-1">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--color-text-muted)]" />
               <input
+                id="material-search"
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -163,7 +187,7 @@ export default function MaterialSearch() {
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
             <RefreshCw className="w-4 h-4 animate-spin text-blue-400" />
-            <span>Searching 5 suppliers — this takes a few seconds...</span>
+            <span>Searching {SUPPLIERS.length} suppliers — this takes a few seconds...</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {Array.from({ length: 5 }).map((_, i) => (

@@ -19,6 +19,14 @@ import { supabase } from '@/lib/supabase';
 import { Engineer } from '@/types';
 
 // ── Constants ──
+const ADMIN_FEE = 15;
+
+const parseFineAmount = (amount: string): number => {
+  const cleaned = amount.replace(/[£,\s]/g, '');
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : num;
+};
+
 const SUPABASE_URL = 'https://cvrdxkwrteuhlxzdryab.supabase.co';
 const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2cmR4a3dydGV1aGx4emRyeWFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwMzQ3NDMsImV4cCI6MjA4NzYxMDc0M30.gIyzC-2wk2jce6vKzVVykP9O4oMxlXUXV-zkB5PQIzg';
@@ -185,8 +193,9 @@ export default function VanFinesPage() {
         showToast(result.message || 'OCR processing failed', 'error');
       } else {
         setFines((prev) => [result, ...prev]);
+        const total = parseFineAmount(result.fine_amount) + ADMIN_FEE;
         showToast(
-          `Fine processed: ${result.vehicle_reg} — ${result.assigned_engineer} — ${result.fine_amount}`,
+          `Fine processed: ${result.vehicle_reg} — ${result.assigned_engineer} — ${result.fine_amount} + £15 admin = £${total.toFixed(2)}`,
           'success'
         );
       }
@@ -426,7 +435,13 @@ export default function VanFinesPage() {
                         Engineer
                       </th>
                       <th className="text-left py-3 px-3 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">
-                        Amount
+                        Fine
+                      </th>
+                      <th className="text-left py-3 px-3 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">
+                        Admin Fee
+                      </th>
+                      <th className="text-left py-3 px-3 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">
+                        Total Due
                       </th>
                       <th className="text-left py-3 px-3 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">
                         Reference
@@ -472,6 +487,12 @@ export default function VanFinesPage() {
                         </td>
                         <td className="py-3 px-3 font-semibold text-red-400">
                           {fine.fine_amount}
+                        </td>
+                        <td className="py-3 px-3 text-amber-400">
+                          £{ADMIN_FEE.toFixed(2)}
+                        </td>
+                        <td className="py-3 px-3 font-bold text-[var(--color-text-primary)]">
+                          £{(parseFineAmount(fine.fine_amount) + ADMIN_FEE).toFixed(2)}
                         </td>
                         <td className="py-3 px-3 text-[var(--color-text-muted)] font-mono text-xs">
                           {fine.reference_number || '—'}
