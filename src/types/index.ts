@@ -118,7 +118,6 @@ export interface MaterialSearchResult {
 }
 
 export interface MaterialSearchResponse {
-  success: boolean;
   query_original: string;
   query_optimized: string;
   suppliers_searched: string[];
