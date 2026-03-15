@@ -45,22 +45,17 @@ interface SearchHistoryItem {
 
 // ── Supabase helpers ──
 
-const createSearch = async (query: string): Promise<string> => {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/material_searches`, {
-    method: 'POST',
-    headers: { ...SUPABASE_HEADERS, Prefer: 'return=representation' },
-    body: JSON.stringify({ query, status: 'pending', results: [] }),
-  });
-  const [row] = await res.json();
-  return row.id;
-};
-
-const triggerSearch = (query: string, searchId: string) => {
-  fetch(N8N_WEBHOOK, {
+const triggerSearch = async (query: string): Promise<string> => {
+  const res = await fetch(N8N_WEBHOOK, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, search_id: searchId }),
-  }); // fire and forget
+    body: JSON.stringify({ query }),
+  });
+  const data = await res.json();
+  if (!data.search_id) {
+    throw new Error('No search_id returned from n8n webhook');
+  }
+  return data.search_id;
 };
 
 const pollForResults = async (
@@ -158,8 +153,7 @@ export default function MaterialSearch() {
     setResults([]);
 
     try {
-      const searchId = await createSearch(q);
-      triggerSearch(q, searchId);
+      const searchId = await triggerSearch(q);
       const searchResults = await pollForResults(searchId);
       setResults(searchResults);
       if (searchResults.length === 0) setError('No results found.');
