@@ -20,6 +20,8 @@ import {
   Calendar,
   X,
   CheckCircle,
+  Pencil,
+  Check,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { supabase } from '@/lib/supabase';
@@ -321,6 +323,10 @@ export default function JobsPanel() {
   const [toast, setToast] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false); // mobile detail view
   const [showEngineerPanel, setShowEngineerPanel] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [jobsWithMaterials, setJobsWithMaterials] = useState<Set<string>>(new Set());
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState<Partial<Job>>({});
 
   // Search Specific Engineer state
   const [allEngineers, setAllEngineers] = useState<Engineer[]>([]);
@@ -406,15 +412,25 @@ export default function JobsPanel() {
     setMaterials(data || []);
   }, []);
 
+  // ── Fetch job IDs that have materials ──
+  const fetchJobsWithMaterials = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('materials')
+      .select('job_id');
+    if (!error && data) {
+      setJobsWithMaterials(new Set(data.map((m: { job_id: string }) => m.job_id)));
+    }
+  }, []);
+
   // ── Initial load ──
   useEffect(() => {
     async function init() {
       setIsLoading(true);
-      await Promise.all([fetchJobs(), fetchStats()]);
+      await Promise.all([fetchJobs(), fetchStats(), fetchJobsWithMaterials()]);
       setIsLoading(false);
     }
     init();
-  }, [fetchJobs, fetchStats]);
+  }, [fetchJobs, fetchStats, fetchJobsWithMaterials]);
 
   // ── Fetch materials when selected job changes ──
   useEffect(() => {
@@ -446,6 +462,7 @@ export default function JobsPanel() {
         { event: '*', schema: 'public', table: 'materials' },
         () => {
           fetchStats();
+          fetchJobsWithMaterials();
           if (selectedJobRef.current) {
             fetchMaterials(selectedJobRef.current);
           }
@@ -456,7 +473,7 @@ export default function JobsPanel() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchJobs, fetchStats, fetchMaterials, searchQuery]);
+  }, [fetchJobs, fetchStats, fetchMaterials, fetchJobsWithMaterials, searchQuery]);
 
   // ── Load engineers for search ──
   useEffect(() => {
@@ -586,6 +603,7 @@ export default function JobsPanel() {
             tenant_name: selectedJob.tenant_name,
             tenant_phone: selectedJob.tenant_phone,
             tenant_email: selectedJob.tenant_email,
+            company_name: selectedJob.company || null,
           }),
         }
       );
@@ -678,9 +696,64 @@ export default function JobsPanel() {
     setAddingMaterial(false);
   };
 
+  // ── Editing helpers ──
+  const startEditing = () => {
+    if (!selectedJob) return;
+    setEditForm({
+      job_title: selectedJob.job_title,
+      property_address: selectedJob.property_address,
+      postcode: selectedJob.postcode,
+      landlord: selectedJob.landlord,
+      company: selectedJob.company,
+      tenant_name: selectedJob.tenant_name,
+      tenant_phone: selectedJob.tenant_phone,
+      tenant_email: selectedJob.tenant_email,
+      job_description: selectedJob.job_description,
+      instruction_notes: selectedJob.instruction_notes,
+      trade: selectedJob.trade,
+      priority: selectedJob.priority,
+      status: selectedJob.status,
+      assigned_engineer: selectedJob.assigned_engineer,
+      works_due_by: selectedJob.works_due_by,
+    });
+    setIsEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setIsEditing(false);
+    setEditForm({});
+  };
+
+  const saveEditing = async () => {
+    if (!selectedJob) return;
+
+    const { error } = await supabase
+      .from('jobs')
+      .update(editForm)
+      .eq('id', selectedJob.id);
+
+    if (error) {
+      showToast('Failed to update job');
+      console.error('Update error:', error);
+      return;
+    }
+
+    const updatedJob = { ...selectedJob, ...editForm } as Job;
+    setSelectedJob(updatedJob);
+    setJobs((prev) =>
+      prev.map((j) => (j.id === selectedJob.id ? updatedJob : j))
+    );
+
+    setIsEditing(false);
+    setEditForm({});
+    showToast('Job updated successfully');
+  };
+
   // ── Select job ──
   const handleSelectJob = (job: Job) => {
     setSelectedJob(job);
+    setIsEditing(false);
+    setEditForm({});
     setShowDetail(true); // for mobile
   };
 
@@ -817,20 +890,26 @@ export default function JobsPanel() {
             {/* Stat cards */}
             <div className="grid grid-cols-4 gap-2 mb-4">
               {[
-                { label: 'TOTAL', value: stats.total, color: 'text-[var(--color-text-primary)]' },
-                { label: 'UNASSIGNED', value: stats.unassigned, color: 'text-red-400' },
-                { label: 'ASSIGNED', value: stats.assigned, color: 'text-blue-400' },
-                { label: 'MATERIALS', value: stats.materials, color: 'text-amber-400' },
+                { label: 'TOTAL', value: stats.total, color: 'text-[var(--color-text-primary)]', filter: null as string | null },
+                { label: 'UNASSIGNED', value: stats.unassigned, color: 'text-red-400', filter: 'UNASSIGNED' },
+                { label: 'ASSIGNED', value: stats.assigned, color: 'text-blue-400', filter: 'ASSIGNED' },
+                { label: 'MATERIALS', value: stats.materials, color: 'text-amber-400', filter: 'MATERIALS' },
               ].map((card) => (
-                <div
+                <button
                   key={card.label}
-                  className="bg-[var(--color-bg-secondary)] rounded-lg p-2 text-center border border-[var(--color-border)]"
+                  onClick={() => setStatusFilter(statusFilter === card.filter ? null : card.filter)}
+                  className={clsx(
+                    'bg-[var(--color-bg-secondary)] rounded-lg p-2 text-center border transition-all',
+                    statusFilter === card.filter
+                      ? 'border-blue-500/50 bg-blue-500/10'
+                      : 'border-[var(--color-border)] hover:border-[var(--color-border-light)]'
+                  )}
                 >
                   <p className={clsx('text-lg font-bold', card.color)}>{isLoading ? '—' : card.value}</p>
                   <p className="text-[10px] text-[var(--color-text-muted)] font-medium uppercase tracking-wide">
                     {card.label}
                   </p>
-                </div>
+                </button>
               ))}
             </div>
 
@@ -849,15 +928,38 @@ export default function JobsPanel() {
 
           {/* Job List */}
           <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
+            {statusFilter && (
+              <div className="flex items-center justify-between px-1 mb-2">
+                <span className="text-xs text-blue-400 font-medium">
+                  Filtered: {statusFilter}
+                </span>
+                <button
+                  onClick={() => setStatusFilter(null)}
+                  className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
             {isLoading ? (
               <SidebarSkeleton />
-            ) : jobs.length === 0 ? (
+            ) : jobs.filter((job) => {
+              if (statusFilter === 'UNASSIGNED') return job.status === 'UNASSIGNED';
+              if (statusFilter === 'ASSIGNED') return job.status === 'ASSIGNED' || job.status === 'IN_PROGRESS';
+              if (statusFilter === 'MATERIALS') return jobsWithMaterials.has(job.id);
+              return true;
+            }).length === 0 ? (
               <div className="text-center py-8">
                 <Search className="w-8 h-8 text-[var(--color-text-muted)] mx-auto mb-2" />
                 <p className="text-sm text-[var(--color-text-secondary)]">No jobs match your search</p>
               </div>
             ) : (
-              jobs.map((job) => {
+              jobs.filter((job) => {
+                if (statusFilter === 'UNASSIGNED') return job.status === 'UNASSIGNED';
+                if (statusFilter === 'ASSIGNED') return job.status === 'ASSIGNED' || job.status === 'IN_PROGRESS';
+                if (statusFilter === 'MATERIALS') return jobsWithMaterials.has(job.id);
+                return true;
+              }).map((job) => {
                 const isSelected = selectedJob?.id === job.id;
                 const t = trade(job.trade);
                 const p = priority(job.priority);
@@ -916,6 +1018,11 @@ export default function JobsPanel() {
                     <p className="text-xs text-[var(--color-text-muted)] mt-1 truncate">
                       {job.property_address}
                     </p>
+                    {job.company && (
+                      <span className="text-xs text-blue-400 mt-0.5 block truncate">
+                        {job.company}
+                      </span>
+                    )}
                   </button>
                 );
               })
@@ -979,13 +1086,80 @@ export default function JobsPanel() {
                     {selectedJob.status.replace('_', ' ')}
                     {selectedJob.status === 'ASSIGNED' && ' ✓'}
                   </span>
+                  {isEditing ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={cancelEditing}
+                        className="btn btn-secondary text-sm px-3 py-1.5"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={saveEditing}
+                        className="btn btn-primary text-sm px-3 py-1.5 flex items-center gap-1"
+                      >
+                        <Check className="w-4 h-4" />
+                        Save
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={startEditing}
+                      className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] transition-colors"
+                      title="Edit job details"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 
+              {/* Edit mode dropdowns for trade/priority/status */}
+              {isEditing && (
+                <div className="flex items-center gap-3">
+                  <select
+                    value={editForm.trade || ''}
+                    onChange={(e) => setEditForm({ ...editForm, trade: e.target.value })}
+                    className="input text-sm"
+                  >
+                    {['General', 'Plumbing', 'Electrical', 'Heating & Gas', 'Drainage', 'Roofing', 'Locksmith', 'Carpentry', 'Decorating'].map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={editForm.priority || ''}
+                    onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}
+                    className="input text-sm"
+                  >
+                    {['HIGH', 'MEDIUM', 'LOW'].map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={editForm.status || ''}
+                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                    className="input text-sm"
+                  >
+                    {['UNASSIGNED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Job Title */}
-              <h2 className="text-xl font-bold text-[var(--color-text-primary)]">
-                {selectedJob.job_title}
-              </h2>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={editForm.job_title || ''}
+                  onChange={(e) => setEditForm({ ...editForm, job_title: e.target.value })}
+                  className="input text-xl font-bold w-full"
+                />
+              ) : (
+                <h2 className="text-xl font-bold text-[var(--color-text-primary)]">
+                  {selectedJob.job_title}
+                </h2>
+              )}
 
               {/* Property & Tenant */}
               <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -993,36 +1167,60 @@ export default function JobsPanel() {
                   <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-2">
                     Property
                   </p>
-                  <p className="text-sm font-semibold text-[var(--color-text-primary)]">
-                    {selectedJob.property_address}
-                  </p>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-1">{selectedJob.postcode}</p>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                    Landlord: {selectedJob.landlord || '—'}
-                  </p>
+                  {isEditing ? (
+                    <div className="space-y-2">
+                      <input type="text" value={editForm.property_address || ''} onChange={(e) => setEditForm({ ...editForm, property_address: e.target.value })} className="input text-sm w-full" placeholder="Property address" />
+                      <input type="text" value={editForm.postcode || ''} onChange={(e) => setEditForm({ ...editForm, postcode: e.target.value })} className="input text-sm w-full" placeholder="Postcode" />
+                      <input type="text" value={editForm.landlord || ''} onChange={(e) => setEditForm({ ...editForm, landlord: e.target.value })} className="input text-sm w-full" placeholder="Landlord" />
+                      <input type="text" value={editForm.company || ''} onChange={(e) => setEditForm({ ...editForm, company: e.target.value })} className="input text-sm w-full" placeholder="Company" />
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+                        {selectedJob.property_address}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-muted)] mt-1">{selectedJob.postcode}</p>
+                      <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                        Landlord: {selectedJob.landlord || '—'}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                        Company: {selectedJob.company || '—'}
+                      </p>
+                    </>
+                  )}
                 </div>
 
                 <div className="md:col-span-2 bg-[var(--color-bg-secondary)] rounded-lg p-4 border border-[var(--color-border)]">
                   <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-2">
                     Tenant
                   </p>
-                  <p className="text-sm font-semibold text-[var(--color-text-primary)]">
-                    {selectedJob.tenant_name || '—'}
-                  </p>
-                  {selectedJob.tenant_phone ? (
-                    <a
-                      href={`tel:${selectedJob.tenant_phone}`}
-                      className="text-xs text-emerald-400 hover:underline mt-1 block"
-                    >
-                      {selectedJob.tenant_phone}
-                    </a>
+                  {isEditing ? (
+                    <div className="space-y-2">
+                      <input type="text" value={editForm.tenant_name || ''} onChange={(e) => setEditForm({ ...editForm, tenant_name: e.target.value })} className="input text-sm w-full" placeholder="Tenant name" />
+                      <input type="text" value={editForm.tenant_phone || ''} onChange={(e) => setEditForm({ ...editForm, tenant_phone: e.target.value })} className="input text-sm w-full" placeholder="Tenant phone" />
+                      <input type="text" value={editForm.tenant_email || ''} onChange={(e) => setEditForm({ ...editForm, tenant_email: e.target.value })} className="input text-sm w-full" placeholder="Tenant email" />
+                    </div>
                   ) : (
-                    <p className="text-xs text-[var(--color-text-muted)] mt-1">—</p>
-                  )}
-                  {selectedJob.tenant_email && (
-                    <p className="text-xs text-[var(--color-text-muted)] mt-1 truncate">
-                      {selectedJob.tenant_email}
-                    </p>
+                    <>
+                      <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+                        {selectedJob.tenant_name || '—'}
+                      </p>
+                      {selectedJob.tenant_phone ? (
+                        <a
+                          href={`tel:${selectedJob.tenant_phone}`}
+                          className="text-xs text-emerald-400 hover:underline mt-1 block"
+                        >
+                          {selectedJob.tenant_phone}
+                        </a>
+                      ) : (
+                        <p className="text-xs text-[var(--color-text-muted)] mt-1">—</p>
+                      )}
+                      {selectedJob.tenant_email && (
+                        <p className="text-xs text-[var(--color-text-muted)] mt-1 truncate">
+                          {selectedJob.tenant_email}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -1033,11 +1231,37 @@ export default function JobsPanel() {
                   Job Description
                 </p>
                 <div className="bg-[var(--color-bg-secondary)] rounded-lg p-4 border border-[var(--color-border)]">
-                  <p className="text-sm text-[var(--color-text-secondary)] whitespace-pre-wrap leading-relaxed">
-                    {selectedJob.job_description || 'No description provided'}
-                  </p>
+                  {isEditing ? (
+                    <textarea
+                      value={editForm.job_description || ''}
+                      onChange={(e) => setEditForm({ ...editForm, job_description: e.target.value })}
+                      className="input text-sm w-full min-h-[120px]"
+                      placeholder="Job description"
+                    />
+                  ) : (
+                    <p className="text-sm text-[var(--color-text-secondary)] whitespace-pre-wrap leading-relaxed">
+                      {selectedJob.job_description || 'No description provided'}
+                    </p>
+                  )}
                 </div>
               </div>
+
+              {/* Instruction Notes (edit mode) */}
+              {isEditing && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-2">
+                    Instruction Notes
+                  </p>
+                  <div className="bg-[var(--color-bg-secondary)] rounded-lg p-4 border border-[var(--color-border)]">
+                    <textarea
+                      value={editForm.instruction_notes || ''}
+                      onChange={(e) => setEditForm({ ...editForm, instruction_notes: e.target.value })}
+                      className="input text-sm w-full min-h-[80px]"
+                      placeholder="Instruction notes"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Materials */}
               <div>

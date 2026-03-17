@@ -136,6 +136,7 @@ export interface Job {
   property_address: string;
   postcode: string;
   landlord: string | null;
+  company: string | null;
   tenant_name: string | null;
   tenant_phone: string | null;
   tenant_email: string | null;
