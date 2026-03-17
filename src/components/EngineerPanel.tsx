@@ -754,6 +754,7 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
             tenant_name: job.tenant_name,
             tenant_phone: job.tenant_phone,
             tenant_email: job.tenant_email,
+            company_name: job.company || null,
           }),
         }
       );
