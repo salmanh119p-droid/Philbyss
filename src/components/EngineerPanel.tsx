@@ -540,7 +540,7 @@ function AssignConfirmDialog({
   assignment: SlotAssignment;
   job: Job;
   isAssigning: boolean;
-  onConfirm: () => void;
+  onConfirm: (start: string, end: string) => void;
   onCancel: () => void;
 }) {
   const slotDate = new Date(assignment.slot_date + 'T00:00:00');
@@ -549,6 +549,31 @@ function AssignConfirmDialog({
     day: 'numeric',
     month: 'short',
   });
+
+  const [adjustedStart, setAdjustedStart] = useState(assignment.slot_start);
+  const [adjustedEnd, setAdjustedEnd] = useState(() => {
+    const [h, m] = assignment.slot_start.split(':').map(Number);
+    const startMins = h * 60 + m;
+    const defaultEndMins = startMins + 90;
+    const [eh, em] = assignment.slot_end.split(':').map(Number);
+    const slotEndMins = eh * 60 + em;
+    const endMins = Math.min(defaultEndMins, slotEndMins);
+    const endH = Math.floor(endMins / 60).toString().padStart(2, '0');
+    const endM = (endMins % 60).toString().padStart(2, '0');
+    return `${endH}:${endM}`;
+  });
+
+  const calculateDuration = (start: string, end: string): string => {
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    const diffMins = (eh * 60 + em) - (sh * 60 + sm);
+    if (diffMins <= 0) return '0h';
+    const hours = Math.floor(diffMins / 60);
+    const mins = diffMins % 60;
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  };
+
+  const isValid = adjustedStart < adjustedEnd && adjustedStart >= assignment.slot_start && adjustedEnd <= assignment.slot_end;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -566,7 +591,7 @@ function AssignConfirmDialog({
               Assign this job to {assignment.staff_name}?
             </h3>
 
-            <div className="space-y-2 mb-6">
+            <div className="space-y-2 mb-4">
               <div className="flex items-start gap-2 text-sm">
                 <span className="text-[var(--color-text-muted)] w-16 flex-shrink-0">Job:</span>
                 <span className="text-[var(--color-text-primary)] font-medium">
@@ -580,11 +605,45 @@ function AssignConfirmDialog({
                 </span>
               </div>
               <div className="flex items-start gap-2 text-sm">
-                <span className="text-[var(--color-text-muted)] w-16 flex-shrink-0">Time:</span>
+                <span className="text-[var(--color-text-muted)] w-16 flex-shrink-0">Date:</span>
                 <span className="text-[var(--color-text-secondary)]">
-                  {formattedDate}, {assignment.slot_start} – {assignment.slot_end}
+                  {formattedDate}
                 </span>
               </div>
+            </div>
+
+            <div className="bg-[var(--color-bg-secondary)] rounded-lg p-4 border border-[var(--color-border)] mb-6">
+              <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-3">
+                Schedule Time
+              </p>
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Start</label>
+                  <input
+                    type="time"
+                    value={adjustedStart}
+                    min={assignment.slot_start}
+                    max={assignment.slot_end}
+                    onChange={(e) => setAdjustedStart(e.target.value)}
+                    className="input text-sm w-full"
+                  />
+                </div>
+                <span className="text-[var(--color-text-muted)] mt-5">to</span>
+                <div className="flex-1">
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">End</label>
+                  <input
+                    type="time"
+                    value={adjustedEnd}
+                    min={adjustedStart}
+                    max={assignment.slot_end}
+                    onChange={(e) => setAdjustedEnd(e.target.value)}
+                    className="input text-sm w-full"
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
+                Free slot: {assignment.slot_start} – {assignment.slot_end} · Selected duration: {calculateDuration(adjustedStart, adjustedEnd)}
+              </p>
             </div>
 
             <div className="flex gap-3">
@@ -595,8 +654,12 @@ function AssignConfirmDialog({
                 Cancel
               </button>
               <button
-                onClick={onConfirm}
-                className="flex-1 py-2.5 rounded-lg font-semibold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 transition-all flex items-center justify-center gap-2"
+                onClick={() => onConfirm(adjustedStart, adjustedEnd)}
+                disabled={!isValid}
+                className={clsx(
+                  'flex-1 py-2.5 rounded-lg font-semibold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 transition-all flex items-center justify-center gap-2',
+                  !isValid && 'opacity-50 cursor-not-allowed'
+                )}
               >
                 <CheckCircle className="w-4 h-4" />
                 Confirm & Assign
@@ -727,9 +790,12 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
     setPendingAssignment(assignment);
   };
 
-  const handleConfirmAssign = async () => {
+  const handleConfirmAssign = async (adjustedStart?: string, adjustedEnd?: string) => {
     if (!pendingAssignment) return;
     setIsAssigning(true);
+
+    const finalStart = adjustedStart || pendingAssignment.slot_start;
+    const finalEnd = adjustedEnd || pendingAssignment.slot_end;
 
     try {
       const res = await fetch(
@@ -741,8 +807,8 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
             staff_uuid: pendingAssignment.staff_uuid,
             staff_name: pendingAssignment.staff_name,
             slot_date: pendingAssignment.slot_date,
-            slot_start: pendingAssignment.slot_start,
-            slot_end: pendingAssignment.slot_end,
+            slot_start: finalStart,
+            slot_end: finalEnd,
             job_ref: job.job_ref,
             job_title: job.job_title,
             job_description: job.job_description,
