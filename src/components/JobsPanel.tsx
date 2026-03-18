@@ -342,6 +342,8 @@ export default function JobsPanel() {
   // Assignment state
   const [pendingAssignment, setPendingAssignment] = useState<SlotAssignment | null>(null);
   const [isAssigning, setIsAssigning] = useState(false);
+  const [dialogAdjustedStart, setDialogAdjustedStart] = useState('');
+  const [dialogAdjustedEnd, setDialogAdjustedEnd] = useState('');
 
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const selectedJobRef = useRef<string | null>(null);
@@ -574,11 +576,25 @@ export default function JobsPanel() {
       slot_start: start,
       slot_end: end,
     });
+    // Initialize adjusted times: start stays, end defaults to start + 1.5h capped at slot end
+    setDialogAdjustedStart(start);
+    const [h, m] = start.split(':').map(Number);
+    const startMins = h * 60 + m;
+    const defaultEndMins = startMins + 90;
+    const [eh, em] = end.split(':').map(Number);
+    const slotEndMins = eh * 60 + em;
+    const endMins = Math.min(defaultEndMins, slotEndMins);
+    setDialogAdjustedEnd(
+      `${Math.floor(endMins / 60).toString().padStart(2, '0')}:${(endMins % 60).toString().padStart(2, '0')}`
+    );
   };
 
-  const handleConfirmAssign = async () => {
+  const handleConfirmAssign = async (adjustedStart?: string, adjustedEnd?: string) => {
     if (!pendingAssignment || !selectedJob) return;
     setIsAssigning(true);
+
+    const finalStart = adjustedStart || pendingAssignment.slot_start;
+    const finalEnd = adjustedEnd || pendingAssignment.slot_end;
 
     try {
       const res = await fetch(
@@ -590,8 +606,8 @@ export default function JobsPanel() {
             staff_uuid: pendingAssignment.staff_uuid,
             staff_name: pendingAssignment.staff_name,
             slot_date: pendingAssignment.slot_date,
-            slot_start: pendingAssignment.slot_start,
-            slot_end: pendingAssignment.slot_end,
+            slot_start: finalStart,
+            slot_end: finalEnd,
             job_ref: selectedJob.job_ref,
             job_title: selectedJob.job_title,
             job_description: selectedJob.job_description,
@@ -637,6 +653,16 @@ export default function JobsPanel() {
 
   const handleJobAssignedFromPanel = (jobRef: string, engineerName: string) => {
     updateJobLocally(jobRef, 'ASSIGNED', engineerName);
+  };
+
+  const calculateDuration = (start: string, end: string): string => {
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    const diffMins = (eh * 60 + em) - (sh * 60 + sm);
+    if (diffMins <= 0) return '0h';
+    const hours = Math.floor(diffMins / 60);
+    const mins = diffMins % 60;
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   };
 
   const updateJobLocally = (jobRef: string, newStatus: string, engineerName: string) => {
@@ -811,7 +837,7 @@ export default function JobsPanel() {
                   Assign this job to {pendingAssignment.staff_name}?
                 </h3>
 
-                <div className="space-y-2 mb-6">
+                <div className="space-y-2 mb-4">
                   <div className="flex items-start gap-2 text-sm">
                     <span className="text-[var(--color-text-muted)] w-16 flex-shrink-0">Job:</span>
                     <span className="text-[var(--color-text-primary)] font-medium">
@@ -825,15 +851,49 @@ export default function JobsPanel() {
                     </span>
                   </div>
                   <div className="flex items-start gap-2 text-sm">
-                    <span className="text-[var(--color-text-muted)] w-16 flex-shrink-0">Time:</span>
+                    <span className="text-[var(--color-text-muted)] w-16 flex-shrink-0">Date:</span>
                     <span className="text-[var(--color-text-secondary)]">
                       {new Date(pendingAssignment.slot_date + 'T00:00:00').toLocaleDateString('en-GB', {
                         weekday: 'short',
                         day: 'numeric',
                         month: 'short',
-                      })}, {pendingAssignment.slot_start} – {pendingAssignment.slot_end}
+                      })}
                     </span>
                   </div>
+                </div>
+
+                <div className="bg-[var(--color-bg-secondary)] rounded-lg p-4 border border-[var(--color-border)] mb-6">
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-3">
+                    Schedule Time
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Start</label>
+                      <input
+                        type="time"
+                        value={dialogAdjustedStart}
+                        min={pendingAssignment.slot_start}
+                        max={pendingAssignment.slot_end}
+                        onChange={(e) => setDialogAdjustedStart(e.target.value)}
+                        className="input text-sm w-full"
+                      />
+                    </div>
+                    <span className="text-[var(--color-text-muted)] mt-5">to</span>
+                    <div className="flex-1">
+                      <label className="text-xs text-[var(--color-text-muted)] mb-1 block">End</label>
+                      <input
+                        type="time"
+                        value={dialogAdjustedEnd}
+                        min={dialogAdjustedStart}
+                        max={pendingAssignment.slot_end}
+                        onChange={(e) => setDialogAdjustedEnd(e.target.value)}
+                        className="input text-sm w-full"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
+                    Free slot: {pendingAssignment.slot_start} – {pendingAssignment.slot_end} · Selected duration: {calculateDuration(dialogAdjustedStart, dialogAdjustedEnd)}
+                  </p>
                 </div>
 
                 <div className="flex gap-3">
@@ -844,8 +904,12 @@ export default function JobsPanel() {
                     Cancel
                   </button>
                   <button
-                    onClick={handleConfirmAssign}
-                    className="flex-1 py-2.5 rounded-lg font-semibold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 transition-all flex items-center justify-center gap-2"
+                    onClick={() => handleConfirmAssign(dialogAdjustedStart, dialogAdjustedEnd)}
+                    disabled={dialogAdjustedStart >= dialogAdjustedEnd || dialogAdjustedStart < pendingAssignment.slot_start || dialogAdjustedEnd > pendingAssignment.slot_end}
+                    className={clsx(
+                      'flex-1 py-2.5 rounded-lg font-semibold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 transition-all flex items-center justify-center gap-2',
+                      (dialogAdjustedStart >= dialogAdjustedEnd || dialogAdjustedStart < pendingAssignment.slot_start || dialogAdjustedEnd > pendingAssignment.slot_end) && 'opacity-50 cursor-not-allowed'
+                    )}
                   >
                     <CheckCircle className="w-4 h-4" />
                     Confirm & Assign
@@ -1433,6 +1497,18 @@ export default function JobsPanel() {
                 {/* Engineer Availability Card */}
                 {!specificLoading && !specificError && specificEngineer && specificAvailability && (
                   <div className="mt-3 card card-hover animate-fade-in">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">
+                        Engineer Availability
+                      </p>
+                      <button
+                        onClick={handleClearSpecificEngineer}
+                        className="flex items-center gap-1 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        Clear
+                      </button>
+                    </div>
                     <div className="flex items-start gap-3 mb-4">
                       <div
                         className={clsx(
