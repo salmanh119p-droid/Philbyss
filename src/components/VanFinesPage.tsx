@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Upload,
   Car,
@@ -11,6 +11,7 @@ import {
   X,
   Loader2,
   ExternalLink,
+  Users,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { supabase } from '@/lib/supabase';
@@ -59,7 +60,7 @@ interface Vehicle {
   updated_at?: string;
 }
 
-type SectionTab = 'upload' | 'vehicles';
+type SectionTab = 'upload' | 'vehicles' | 'totals';
 
 // ── Main component ──
 export default function VanFinesPage() {
@@ -100,6 +101,54 @@ export default function VanFinesPage() {
     vehicles.forEach((v) => { if (v.engineer_name) names.add(v.engineer_name); });
     return Array.from(names).sort();
   })();
+
+  // ── Engineer totals aggregation ──
+  const engineerTotals = useMemo(() => {
+    const map = new Map<string, {
+      engineer: string;
+      ticketCount: number;
+      totalFineAmount: number;
+      totalAdminFees: number;
+      totalDue: number;
+      vehicleRegs: Set<string>;
+      latestDate: string;
+    }>();
+
+    for (const fine of fines) {
+      const key = (fine.assigned_engineer || 'UNKNOWN').toUpperCase();
+      const existing = map.get(key);
+      const fineAmount = parseFineAmount(fine.fine_amount);
+
+      if (existing) {
+        existing.ticketCount += 1;
+        existing.totalFineAmount += fineAmount;
+        existing.totalAdminFees += ADMIN_FEE;
+        existing.totalDue += fineAmount + ADMIN_FEE;
+        existing.vehicleRegs.add(fine.vehicle_reg);
+        if (fine.issue_date > existing.latestDate) {
+          existing.latestDate = fine.issue_date;
+        }
+      } else {
+        map.set(key, {
+          engineer: fine.assigned_engineer || 'UNKNOWN',
+          ticketCount: 1,
+          totalFineAmount: fineAmount,
+          totalAdminFees: ADMIN_FEE,
+          totalDue: fineAmount + ADMIN_FEE,
+          vehicleRegs: new Set([fine.vehicle_reg]),
+          latestDate: fine.issue_date || '',
+        });
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.totalDue - a.totalDue);
+  }, [fines]);
+
+  const uniqueEngineerCount = engineerTotals.length;
+  const grandTotalDue = useMemo(
+    () => engineerTotals.reduce((sum, e) => sum + e.totalDue, 0),
+    [engineerTotals]
+  );
 
   // ── Load fines ──
   const fetchFines = useCallback(async () => {
@@ -403,6 +452,18 @@ export default function VanFinesPage() {
           <Car className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
           Manage Vehicles ({vehicles.length})
         </button>
+        <button
+          onClick={() => setActiveSection('totals')}
+          className={clsx(
+            'px-4 py-2 rounded-lg text-sm font-medium transition-all',
+            activeSection === 'totals'
+              ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+              : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:border-[var(--color-border-light)]'
+          )}
+        >
+          <Users className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
+          Engineer Totals ({uniqueEngineerCount})
+        </button>
       </div>
 
       {/* ═══════ SECTION 1: UPLOAD FINE ═══════ */}
@@ -680,6 +741,93 @@ export default function VanFinesPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ═══════ SECTION 3: ENGINEER TOTALS ═══════ */}
+      {activeSection === 'totals' && (
+        <div className="space-y-6">
+          {/* Summary Stats */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-[var(--color-bg-secondary)] rounded-lg p-2 text-center border border-[var(--color-border)]">
+              <p className="text-lg font-bold text-[var(--color-text-primary)]">{uniqueEngineerCount}</p>
+              <p className="text-[10px] text-[var(--color-text-muted)] font-medium uppercase tracking-wide">Total Engineers</p>
+            </div>
+            <div className="bg-[var(--color-bg-secondary)] rounded-lg p-2 text-center border border-[var(--color-border)]">
+              <p className="text-lg font-bold text-[var(--color-text-primary)]">{fines.length}</p>
+              <p className="text-[10px] text-[var(--color-text-muted)] font-medium uppercase tracking-wide">Total Tickets</p>
+            </div>
+            <div className="bg-[var(--color-bg-secondary)] rounded-lg p-2 text-center border border-[var(--color-border)]">
+              <p className="text-lg font-bold text-red-400">£{grandTotalDue.toFixed(2)}</p>
+              <p className="text-[10px] text-[var(--color-text-muted)] font-medium uppercase tracking-wide">Total Due</p>
+            </div>
+          </div>
+
+          {/* Totals Table */}
+          {fines.length === 0 ? (
+            <div className="card text-center py-8">
+              <Car className="w-8 h-8 text-[var(--color-text-muted)] mx-auto mb-2" />
+              <p className="text-sm text-[var(--color-text-muted)]">No fines data to summarise</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--color-border)]">
+                    <th className="text-left py-3 px-3 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">Engineer</th>
+                    <th className="text-left py-3 px-3 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">Tickets</th>
+                    <th className="text-left py-3 px-3 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">Total Fines</th>
+                    <th className="text-left py-3 px-3 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">Admin Fees</th>
+                    <th className="text-left py-3 px-3 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">Total Due</th>
+                    <th className="text-left py-3 px-3 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">Vehicles</th>
+                    <th className="text-left py-3 px-3 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">Latest Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {engineerTotals.map((row) => (
+                    <tr
+                      key={row.engineer}
+                      className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] transition-colors"
+                    >
+                      <td className="py-3 px-3">
+                        <span
+                          className={clsx(
+                            'font-medium',
+                            row.engineer === 'UNKNOWN'
+                              ? 'text-amber-400'
+                              : 'text-[var(--color-text-primary)]'
+                          )}
+                        >
+                          {row.engineer}
+                          {row.engineer === 'UNKNOWN' && (
+                            <span className="ml-1 text-[10px] text-amber-400/60">(not matched)</span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-[var(--color-text-secondary)]">
+                        {row.ticketCount}
+                      </td>
+                      <td className="py-3 px-3 font-semibold text-red-400">
+                        £{row.totalFineAmount.toFixed(2)}
+                      </td>
+                      <td className="py-3 px-3 text-amber-400">
+                        £{row.totalAdminFees.toFixed(2)}
+                      </td>
+                      <td className="py-3 px-3 font-bold text-[var(--color-text-primary)]">
+                        £{row.totalDue.toFixed(2)}
+                      </td>
+                      <td className="py-3 px-3 font-mono text-xs text-[var(--color-text-secondary)]">
+                        {Array.from(row.vehicleRegs).join(', ')}
+                      </td>
+                      <td className="py-3 px-3 text-[var(--color-text-secondary)]">
+                        {row.latestDate || '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
