@@ -612,6 +612,7 @@ export default function JobsPanel() {
             job_title: selectedJob.job_title,
             job_description: selectedJob.job_description,
             instruction_notes: selectedJob.instruction_notes,
+            fault_detail: selectedJob.fault_detail || null,
             property_address: selectedJob.property_address,
             postcode: selectedJob.postcode,
             trade: selectedJob.trade,
@@ -620,6 +621,7 @@ export default function JobsPanel() {
             tenant_phone: selectedJob.tenant_phone,
             tenant_email: selectedJob.tenant_email,
             company_name: selectedJob.company || null,
+            landlord: selectedJob.landlord || null,
           }),
         }
       );
@@ -736,6 +738,7 @@ export default function JobsPanel() {
       tenant_email: selectedJob.tenant_email,
       job_description: selectedJob.job_description,
       instruction_notes: selectedJob.instruction_notes,
+      fault_detail: selectedJob.fault_detail,
       trade: selectedJob.trade,
       priority: selectedJob.priority,
       status: selectedJob.status,
@@ -1310,19 +1313,48 @@ export default function JobsPanel() {
                 </div>
               </div>
 
-              {/* Instruction Notes (edit mode) */}
-              {isEditing && (
+              {/* Instruction Notes — only show if has content OR in edit mode */}
+              {(selectedJob.instruction_notes || isEditing) && (
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-2">
                     Instruction Notes
                   </p>
                   <div className="bg-[var(--color-bg-secondary)] rounded-lg p-4 border border-[var(--color-border)]">
-                    <textarea
-                      value={editForm.instruction_notes || ''}
-                      onChange={(e) => setEditForm({ ...editForm, instruction_notes: e.target.value })}
-                      className="input text-sm w-full min-h-[80px]"
-                      placeholder="Instruction notes"
-                    />
+                    {isEditing ? (
+                      <textarea
+                        value={editForm.instruction_notes || ''}
+                        onChange={(e) => setEditForm({ ...editForm, instruction_notes: e.target.value })}
+                        className="input text-sm w-full min-h-[80px]"
+                        placeholder="Instruction notes"
+                      />
+                    ) : (
+                      <p className="text-sm text-[var(--color-text-secondary)] whitespace-pre-wrap leading-relaxed">
+                        {selectedJob.instruction_notes}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Fault Detail — only show if has content OR in edit mode */}
+              {(selectedJob.fault_detail || isEditing) && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-2">
+                    Fault Detail
+                  </p>
+                  <div className="bg-[var(--color-bg-secondary)] rounded-lg p-4 border border-[var(--color-border)]">
+                    {isEditing ? (
+                      <textarea
+                        value={editForm.fault_detail || ''}
+                        onChange={(e) => setEditForm({ ...editForm, fault_detail: e.target.value })}
+                        className="input text-sm w-full min-h-[80px]"
+                        placeholder="Fault detail from tenant"
+                      />
+                    ) : (
+                      <p className="text-sm text-[var(--color-text-secondary)] whitespace-pre-wrap leading-relaxed">
+                        {selectedJob.fault_detail}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -1503,10 +1535,10 @@ export default function JobsPanel() {
                       </p>
                       <button
                         onClick={handleClearSpecificEngineer}
-                        className="flex items-center gap-1 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] border border-[var(--color-border)] transition-colors"
                       >
                         <X className="w-3.5 h-3.5" />
-                        Clear
+                        Back
                       </button>
                     </div>
                     <div className="flex items-start gap-3 mb-4">
