@@ -142,6 +142,7 @@ export interface Job {
   tenant_email: string | null;
   job_description: string;
   instruction_notes: string | null;
+  fault_detail: string | null;
   fixflo_ref: string | null;
   assigned_by: string | null;
   assigned_engineer: string | null;

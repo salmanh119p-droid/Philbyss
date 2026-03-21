@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Calendar,
   CheckCircle,
+  ArrowLeft,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import {
@@ -813,6 +814,7 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
             job_title: job.job_title,
             job_description: job.job_description,
             instruction_notes: job.instruction_notes,
+            fault_detail: job.fault_detail || null,
             property_address: job.property_address,
             postcode: job.postcode,
             trade: job.trade,
@@ -821,6 +823,7 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
             tenant_phone: job.tenant_phone,
             tenant_email: job.tenant_email,
             company_name: job.company || null,
+            landlord: job.landlord || null,
           }),
         }
       );
@@ -870,6 +873,13 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={onClose}
+                className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors mr-1"
+                title="Back to job"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
               <span className="w-2 h-2 rounded-full bg-white" />
               <h2 className="text-lg font-bold text-white">Find Best Engineer in ServiceM8</h2>
             </div>
