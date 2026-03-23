@@ -317,7 +317,7 @@ export default function JobsPanel() {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [stats, setStats] = useState({ total: 0, unassigned: 0, assigned: 0, materials: 0 });
+  const [stats, setStats] = useState({ total: 0, unassigned: 0, assigned: 0, materials: 0, existing: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [newMaterialName, setNewMaterialName] = useState('');
   const [addingMaterial, setAddingMaterial] = useState(false);
@@ -407,11 +407,12 @@ export default function JobsPanel() {
 
   // ── Fetch stats ──
   const fetchStats = useCallback(async () => {
-    const [totalRes, unassignedRes, assignedRes, materialsRes] = await Promise.all([
+    const [totalRes, unassignedRes, assignedRes, materialsRes, existingRes] = await Promise.all([
       supabase.from('jobs').select('*', { count: 'exact', head: true }),
       supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('status', 'UNASSIGNED'),
       supabase.from('jobs').select('*', { count: 'exact', head: true }).in('status', ['ASSIGNED', 'IN_PROGRESS']),
       supabase.from('materials').select('*', { count: 'exact', head: true }),
+      supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('job_exist', 'Yes'),
     ]);
 
     setStats({
@@ -419,6 +420,7 @@ export default function JobsPanel() {
       unassigned: unassignedRes.count ?? 0,
       assigned: assignedRes.count ?? 0,
       materials: materialsRes.count ?? 0,
+      existing: existingRes.count ?? 0,
     });
   }, []);
 
@@ -1339,12 +1341,13 @@ export default function JobsPanel() {
             </div>
 
             {/* Stat cards */}
-            <div className="grid grid-cols-4 gap-2 mb-4">
+            <div className="grid grid-cols-5 gap-2 mb-4">
               {[
                 { label: 'TOTAL', value: stats.total, color: 'text-[var(--color-text-primary)]', filter: null as string | null },
                 { label: 'UNASSIGNED', value: stats.unassigned, color: 'text-red-400', filter: 'UNASSIGNED' },
                 { label: 'ASSIGNED', value: stats.assigned, color: 'text-blue-400', filter: 'ASSIGNED' },
                 { label: 'MATERIALS', value: stats.materials, color: 'text-amber-400', filter: 'MATERIALS' },
+                { label: 'EXISTING', value: stats.existing, color: 'text-cyan-400', filter: 'EXISTING' },
               ].map((card) => (
                 <button
                   key={card.label}
@@ -1405,6 +1408,7 @@ export default function JobsPanel() {
               if (statusFilter === 'UNASSIGNED') return job.status === 'UNASSIGNED';
               if (statusFilter === 'ASSIGNED') return job.status === 'ASSIGNED' || job.status === 'IN_PROGRESS';
               if (statusFilter === 'MATERIALS') return jobsWithMaterials.has(job.id);
+              if (statusFilter === 'EXISTING') return job.job_exist === 'Yes';
               return true;
             }).length === 0 ? (
               <div className="text-center py-8">
