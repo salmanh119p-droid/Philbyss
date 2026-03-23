@@ -799,34 +799,43 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
     const finalEnd = adjustedEnd || pendingAssignment.slot_end;
 
     try {
-      const res = await fetch(
-        'https://n8n.srv1177154.hstgr.cloud/webhook/assign-engineer',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            staff_uuid: pendingAssignment.staff_uuid,
-            staff_name: pendingAssignment.staff_name,
-            slot_date: pendingAssignment.slot_date,
-            slot_start: finalStart,
-            slot_end: finalEnd,
-            job_ref: job.job_ref,
-            job_title: job.job_title,
-            job_description: job.job_description,
-            instruction_notes: job.instruction_notes,
-            fault_detail: job.fault_detail || null,
-            property_address: job.property_address,
-            postcode: job.postcode,
-            trade: job.trade,
-            priority: job.priority,
-            tenant_name: job.tenant_name,
-            tenant_phone: job.tenant_phone,
-            tenant_email: job.tenant_email,
-            company_name: job.company || null,
-            landlord: job.landlord || null,
-          }),
-        }
-      );
+      const isExistingJob = job.job_exist === 'Yes' && job.sm8_job_uuid;
+      const webhookUrl = isExistingJob
+        ? 'https://n8n.srv1177154.hstgr.cloud/webhook/exsiting_job'
+        : 'https://n8n.srv1177154.hstgr.cloud/webhook/assign-engineer';
+
+      const payload: Record<string, any> = {
+        staff_uuid: pendingAssignment.staff_uuid,
+        staff_name: pendingAssignment.staff_name,
+        slot_date: pendingAssignment.slot_date,
+        slot_start: finalStart,
+        slot_end: finalEnd,
+        job_ref: job.job_ref,
+        job_title: job.job_title,
+        job_description: job.job_description,
+        instruction_notes: job.instruction_notes,
+        fault_detail: job.fault_detail || null,
+        property_address: job.property_address,
+        postcode: job.postcode,
+        trade: job.trade,
+        priority: job.priority,
+        tenant_name: job.tenant_name,
+        tenant_phone: job.tenant_phone,
+        tenant_email: job.tenant_email,
+        company_name: job.company || null,
+        landlord: job.landlord || null,
+        action: 'assign_engineer',
+      };
+
+      if (isExistingJob) {
+        payload.sm8_job_uuid = job.sm8_job_uuid;
+      }
+
+      const res = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
       const data = await res.json();
 
@@ -881,7 +890,11 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <span className="w-2 h-2 rounded-full bg-white" />
-              <h2 className="text-lg font-bold text-white">Find Best Engineer in ServiceM8</h2>
+              <h2 className="text-lg font-bold text-white">
+                {job.job_exist === 'Yes'
+                  ? 'Assign Engineer to Existing SM8 Job'
+                  : 'Find Best Engineer in ServiceM8'}
+              </h2>
             </div>
             <p className="text-sm text-purple-200/80 mt-0.5">
               {job.job_ref} · {job.trade} · {job.postcode}
@@ -889,7 +902,9 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
                 ` · ${response.total_matched} matched, ${response.total_others} others`}
             </p>
             <p className="text-xs text-purple-300/60">
-              Ranked by trade · location · ServiceM8 availability · certifications
+              {job.job_exist === 'Yes'
+                ? 'This job already exists in ServiceM8 — selecting an engineer will schedule them to the existing job'
+                : 'Ranked by trade · location · ServiceM8 availability · certifications'}
             </p>
           </div>
           <button

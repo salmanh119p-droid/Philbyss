@@ -19,6 +19,8 @@ import {
   Search,
   ClipboardList,
   Calendar,
+  Menu,
+  X,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import StatCard from '@/components/StatCard';
@@ -46,6 +48,7 @@ export default function DashboardClient() {
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const router = useRouter();
 
   const formatCurrency = (value: number) => {
@@ -92,6 +95,16 @@ export default function DashboardClient() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && drawerOpen) {
+        setDrawerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [drawerOpen]);
+
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/');
@@ -137,11 +150,18 @@ export default function DashboardClient() {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-[var(--color-bg-primary)]/80 backdrop-blur-xl border-b border-[var(--color-border)]">
+      <header className="sticky top-0 z-40 bg-[var(--color-bg-primary)]/80 backdrop-blur-xl border-b border-[var(--color-border)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            {/* Logo */}
+            {/* Left: Menu button + Logo */}
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => setDrawerOpen(true)}
+                className="p-2 rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] transition-colors"
+                title="Menu"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
                 <span className="text-lg font-bold text-white">P</span>
               </div>
@@ -151,7 +171,7 @@ export default function DashboardClient() {
               </div>
             </div>
 
-            {/* Actions */}
+            {/* Right: Actions */}
             <div className="flex items-center gap-3">
               {lastRefresh && (
                 <span className="text-xs text-[var(--color-text-muted)] hidden sm:block">
@@ -175,27 +195,77 @@ export default function DashboardClient() {
               </button>
             </div>
           </div>
+        </div>
+      </header>
 
-          {/* Tabs */}
-          <nav className="flex gap-1 -mb-px">
+      {/* Sidebar Drawer Overlay */}
+      {drawerOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+          onClick={() => setDrawerOpen(false)}
+        />
+      )}
+
+      {/* Sidebar Drawer */}
+      <div
+        className={clsx(
+          'fixed top-0 left-0 z-50 h-full w-72 bg-[var(--color-bg-card)] border-r border-[var(--color-border)] shadow-2xl transition-transform duration-300 ease-in-out flex flex-col',
+          drawerOpen ? 'translate-x-0' : '-translate-x-full'
+        )}
+      >
+        {/* Drawer Header */}
+        <div className="flex items-center justify-between p-5 border-b border-[var(--color-border)]">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+              <span className="text-base font-bold text-white">P</span>
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Philbys Group</h2>
+              <p className="text-xs text-[var(--color-text-muted)]">Operations Dashboard</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setDrawerOpen(false)}
+            className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Drawer Nav Items */}
+        <nav className="flex-1 overflow-y-auto py-3 px-3">
+          <div className="space-y-1">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setDrawerOpen(false);
+                }}
                 className={clsx(
-                  'nav-link flex items-center gap-2 pb-3 border-b-2 rounded-none',
+                  'w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all',
                   activeTab === tab.id
-                    ? 'border-blue-500 text-[var(--color-text-primary)]'
-                    : 'border-transparent'
+                    ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
+                    : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]'
                 )}
               >
-                <tab.icon className="w-4 h-4" />
+                <tab.icon className="w-5 h-5 flex-shrink-0" />
                 {tab.label}
+                {activeTab === tab.id && (
+                  <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400" />
+                )}
               </button>
             ))}
-          </nav>
+          </div>
+        </nav>
+
+        {/* Drawer Footer */}
+        <div className="p-4 border-t border-[var(--color-border)]">
+          <p className="text-[10px] text-[var(--color-text-muted)] text-center">
+            © 2026 Philbys Group Ltd
+          </p>
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

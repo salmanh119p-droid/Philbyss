@@ -65,6 +65,7 @@ const STATUS_CONFIG: Record<string, string> = {
 const SOURCE_CONFIG: Record<string, string> = {
   FIXFLO: 'bg-blue-500/20 text-blue-400',
   OUTLOOK: 'bg-amber-500/20 text-amber-400',
+  MANUAL: 'bg-purple-500/20 text-purple-400',
 };
 
 const AVATAR_COLORS = [
@@ -327,6 +328,28 @@ export default function JobsPanel() {
   const [jobsWithMaterials, setJobsWithMaterials] = useState<Set<string>>(new Set());
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Job>>({});
+  const [statusUpdateValue, setStatusUpdateValue] = useState('Work Order');
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [showAddJobForm, setShowAddJobForm] = useState(false);
+  const [isAddingJob, setIsAddingJob] = useState(false);
+  const [newJob, setNewJob] = useState({
+    job_title: '',
+    trade: 'General',
+    priority: 'MEDIUM',
+    property_address: '',
+    postcode: '',
+    landlord: '',
+    company: '',
+    tenant_name: '',
+    tenant_phone: '',
+    tenant_email: '',
+    job_description: '',
+    instruction_notes: '',
+    fault_detail: '',
+    source: 'MANUAL',
+    job_exist: 'No',
+    sm8_job_uuid: '',
+  });
 
   // Search Specific Engineer state
   const [allEngineers, setAllEngineers] = useState<Engineer[]>([]);
@@ -597,34 +620,43 @@ export default function JobsPanel() {
     const finalEnd = adjustedEnd || pendingAssignment.slot_end;
 
     try {
-      const res = await fetch(
-        'https://n8n.srv1177154.hstgr.cloud/webhook/assign-engineer',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            staff_uuid: pendingAssignment.staff_uuid,
-            staff_name: pendingAssignment.staff_name,
-            slot_date: pendingAssignment.slot_date,
-            slot_start: finalStart,
-            slot_end: finalEnd,
-            job_ref: selectedJob.job_ref,
-            job_title: selectedJob.job_title,
-            job_description: selectedJob.job_description,
-            instruction_notes: selectedJob.instruction_notes,
-            fault_detail: selectedJob.fault_detail || null,
-            property_address: selectedJob.property_address,
-            postcode: selectedJob.postcode,
-            trade: selectedJob.trade,
-            priority: selectedJob.priority,
-            tenant_name: selectedJob.tenant_name,
-            tenant_phone: selectedJob.tenant_phone,
-            tenant_email: selectedJob.tenant_email,
-            company_name: selectedJob.company || null,
-            landlord: selectedJob.landlord || null,
-          }),
-        }
-      );
+      const isExistingJob = selectedJob.job_exist === 'Yes' && selectedJob.sm8_job_uuid;
+      const webhookUrl = isExistingJob
+        ? 'https://n8n.srv1177154.hstgr.cloud/webhook/exsiting_job'
+        : 'https://n8n.srv1177154.hstgr.cloud/webhook/assign-engineer';
+
+      const payload: Record<string, any> = {
+        staff_uuid: pendingAssignment.staff_uuid,
+        staff_name: pendingAssignment.staff_name,
+        slot_date: pendingAssignment.slot_date,
+        slot_start: finalStart,
+        slot_end: finalEnd,
+        job_ref: selectedJob.job_ref,
+        job_title: selectedJob.job_title,
+        job_description: selectedJob.job_description,
+        instruction_notes: selectedJob.instruction_notes,
+        fault_detail: selectedJob.fault_detail || null,
+        property_address: selectedJob.property_address,
+        postcode: selectedJob.postcode,
+        trade: selectedJob.trade,
+        priority: selectedJob.priority,
+        tenant_name: selectedJob.tenant_name,
+        tenant_phone: selectedJob.tenant_phone,
+        tenant_email: selectedJob.tenant_email,
+        company_name: selectedJob.company || null,
+        landlord: selectedJob.landlord || null,
+        action: 'assign_engineer',
+      };
+
+      if (isExistingJob) {
+        payload.sm8_job_uuid = selectedJob.sm8_job_uuid;
+      }
+
+      const res = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
       const data = await res.json();
 
@@ -655,6 +687,123 @@ export default function JobsPanel() {
 
   const handleJobAssignedFromPanel = (jobRef: string, engineerName: string) => {
     updateJobLocally(jobRef, 'ASSIGNED', engineerName);
+  };
+
+  const handleStatusOnlyUpdate = async () => {
+    if (!selectedJob || !selectedJob.sm8_job_uuid) return;
+    setIsUpdatingStatus(true);
+
+    try {
+      const res = await fetch(
+        'https://n8n.srv1177154.hstgr.cloud/webhook/exsiting_job',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sm8_job_uuid: selectedJob.sm8_job_uuid,
+            job_ref: selectedJob.job_ref,
+            new_status: statusUpdateValue,
+            action: 'status_only',
+          }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (data.error) {
+        showToast(`Status update failed: ${data.message || 'Unknown error'}`);
+      } else {
+        showToast(`✓ Job ${selectedJob.job_ref} status updated to "${statusUpdateValue}"`);
+        setJobs((prev) =>
+          prev.map((j) =>
+            j.job_ref === selectedJob.job_ref
+              ? { ...j, status: 'ASSIGNED' }
+              : j
+          )
+        );
+        if (selectedJob) {
+          setSelectedJob((prev) =>
+            prev ? { ...prev, status: 'ASSIGNED' } : prev
+          );
+        }
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Network error';
+      showToast(`Failed to update status: ${message}`);
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const handleAddJob = async () => {
+    if (!newJob.job_title.trim() || !newJob.postcode.trim()) {
+      showToast('Job title and postcode are required');
+      return;
+    }
+
+    setIsAddingJob(true);
+
+    const jobRef = `MAN${Date.now().toString().slice(-8)}`;
+
+    const jobPayload = {
+      job_ref: jobRef,
+      source: 'MANUAL',
+      job_title: newJob.job_title.trim(),
+      trade: newJob.trade,
+      priority: newJob.priority,
+      status: 'UNASSIGNED',
+      property_address: newJob.property_address.trim(),
+      postcode: newJob.postcode.trim().toUpperCase(),
+      landlord: newJob.landlord.trim() || null,
+      company: newJob.company.trim() || null,
+      tenant_name: newJob.tenant_name.trim() || null,
+      tenant_phone: newJob.tenant_phone.trim() || null,
+      tenant_email: newJob.tenant_email.trim() || null,
+      job_description: newJob.job_description.trim() || null,
+      instruction_notes: newJob.instruction_notes.trim() || null,
+      fault_detail: newJob.fault_detail.trim() || null,
+      job_exist: newJob.job_exist,
+      sm8_job_uuid: newJob.job_exist === 'Yes' && newJob.sm8_job_uuid.trim()
+        ? newJob.sm8_job_uuid.trim()
+        : null,
+      date_raised: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase.from('jobs').insert(jobPayload).select();
+
+    if (error) {
+      console.error('Error adding job:', error);
+      showToast('Failed to add job');
+    } else {
+      showToast(`✓ Job ${jobRef} created`);
+      setShowAddJobForm(false);
+      setNewJob({
+        job_title: '',
+        trade: 'General',
+        priority: 'MEDIUM',
+        property_address: '',
+        postcode: '',
+        landlord: '',
+        company: '',
+        tenant_name: '',
+        tenant_phone: '',
+        tenant_email: '',
+        job_description: '',
+        instruction_notes: '',
+        fault_detail: '',
+        source: 'MANUAL',
+        job_exist: 'No',
+        sm8_job_uuid: '',
+      });
+      if (data && data.length > 0) {
+        setSelectedJob(data[0]);
+        setShowDetail(true);
+      }
+      fetchJobs(searchQuery);
+      fetchStats();
+    }
+
+    setIsAddingJob(false);
   };
 
   const calculateDuration = (start: string, end: string): string => {
@@ -810,6 +959,241 @@ export default function JobsPanel() {
       {toast && (
         <div className="fixed top-20 right-4 z-50 bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-lg px-4 py-3 shadow-lg animate-slide-up">
           <p className="text-sm text-[var(--color-text-primary)]">{toast}</p>
+        </div>
+      )}
+
+      {/* Add Job Form Modal */}
+      {showAddJobForm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-xl p-6 max-w-2xl w-full mx-4 shadow-2xl animate-fade-in max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-[var(--color-text-primary)]">
+                Add Job Manually
+              </h3>
+              <button
+                onClick={() => setShowAddJobForm(false)}
+                className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Job Title */}
+              <div>
+                <label className="text-xs text-[var(--color-text-muted)] mb-1 block">
+                  Job Title <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newJob.job_title}
+                  onChange={(e) => setNewJob({ ...newJob, job_title: e.target.value })}
+                  placeholder="e.g. Blocked Basin & Bath Stopper"
+                  className="input text-sm"
+                />
+              </div>
+
+              {/* Trade + Priority + Job Exists row */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Trade</label>
+                  <select
+                    value={newJob.trade}
+                    onChange={(e) => setNewJob({ ...newJob, trade: e.target.value })}
+                    className="input text-sm"
+                  >
+                    {['General', 'Plumbing', 'Electrical', 'Heating & Gas', 'Drainage', 'Roofing', 'Locksmith', 'Carpentry', 'Decorating'].map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Priority</label>
+                  <select
+                    value={newJob.priority}
+                    onChange={(e) => setNewJob({ ...newJob, priority: e.target.value })}
+                    className="input text-sm"
+                  >
+                    {['HIGH', 'MEDIUM', 'LOW'].map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Job Exists in SM8?</label>
+                  <select
+                    value={newJob.job_exist}
+                    onChange={(e) => setNewJob({ ...newJob, job_exist: e.target.value })}
+                    className="input text-sm"
+                  >
+                    <option value="No">No — New Job</option>
+                    <option value="Yes">Yes — Existing SM8 Job</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* SM8 UUID — only show if job_exist = Yes */}
+              {newJob.job_exist === 'Yes' && (
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">
+                    ServiceM8 Job UUID <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newJob.sm8_job_uuid}
+                    onChange={(e) => setNewJob({ ...newJob, sm8_job_uuid: e.target.value })}
+                    placeholder="e.g. a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                    className="input text-sm font-mono"
+                  />
+                  <p className="text-[10px] text-[var(--color-text-muted)] mt-1">
+                    Paste the UUID from ServiceM8 for the existing job
+                  </p>
+                </div>
+              )}
+
+              {/* Property Address + Postcode */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Property Address</label>
+                  <input
+                    type="text"
+                    value={newJob.property_address}
+                    onChange={(e) => setNewJob({ ...newJob, property_address: e.target.value })}
+                    placeholder="Full address"
+                    className="input text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">
+                    Postcode <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newJob.postcode}
+                    onChange={(e) => setNewJob({ ...newJob, postcode: e.target.value })}
+                    placeholder="E1 6AN"
+                    className="input text-sm uppercase"
+                  />
+                </div>
+              </div>
+
+              {/* Landlord + Company */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Landlord</label>
+                  <input
+                    type="text"
+                    value={newJob.landlord}
+                    onChange={(e) => setNewJob({ ...newJob, landlord: e.target.value })}
+                    placeholder="Landlord name"
+                    className="input text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Company / Agency</label>
+                  <input
+                    type="text"
+                    value={newJob.company}
+                    onChange={(e) => setNewJob({ ...newJob, company: e.target.value })}
+                    placeholder="e.g. Kinleigh Folkard & Hayward"
+                    className="input text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Tenant details */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Tenant Name</label>
+                  <input
+                    type="text"
+                    value={newJob.tenant_name}
+                    onChange={(e) => setNewJob({ ...newJob, tenant_name: e.target.value })}
+                    placeholder="Name"
+                    className="input text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Tenant Phone</label>
+                  <input
+                    type="text"
+                    value={newJob.tenant_phone}
+                    onChange={(e) => setNewJob({ ...newJob, tenant_phone: e.target.value })}
+                    placeholder="07XXX..."
+                    className="input text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Tenant Email</label>
+                  <input
+                    type="text"
+                    value={newJob.tenant_email}
+                    onChange={(e) => setNewJob({ ...newJob, tenant_email: e.target.value })}
+                    placeholder="email@example.com"
+                    className="input text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Job Description */}
+              <div>
+                <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Job Description</label>
+                <textarea
+                  value={newJob.job_description}
+                  onChange={(e) => setNewJob({ ...newJob, job_description: e.target.value })}
+                  placeholder="Describe the issue..."
+                  className="input text-sm min-h-[80px]"
+                />
+              </div>
+
+              {/* Instruction Notes */}
+              <div>
+                <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Instruction Notes</label>
+                <textarea
+                  value={newJob.instruction_notes}
+                  onChange={(e) => setNewJob({ ...newJob, instruction_notes: e.target.value })}
+                  placeholder="Special instructions for the engineer..."
+                  className="input text-sm min-h-[60px]"
+                />
+              </div>
+
+              {/* Fault Detail */}
+              <div>
+                <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Fault Detail</label>
+                <textarea
+                  value={newJob.fault_detail}
+                  onChange={(e) => setNewJob({ ...newJob, fault_detail: e.target.value })}
+                  placeholder="Detail from tenant about the fault..."
+                  className="input text-sm min-h-[60px]"
+                />
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowAddJobForm(false)}
+                  className="btn btn-secondary flex-1 py-2.5"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddJob}
+                  disabled={isAddingJob || !newJob.job_title.trim() || !newJob.postcode.trim()}
+                  className={clsx(
+                    'flex-1 py-2.5 rounded-lg font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 transition-all flex items-center justify-center gap-2',
+                    (isAddingJob || !newJob.job_title.trim() || !newJob.postcode.trim()) && 'opacity-50 cursor-not-allowed'
+                  )}
+                >
+                  {isAddingJob ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Plus className="w-4 h-4" />
+                  )}
+                  {isAddingJob ? 'Creating...' : 'Create Job'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -991,6 +1375,13 @@ export default function JobsPanel() {
                 className="input pl-9 text-sm"
               />
             </div>
+            <button
+              onClick={() => setShowAddJobForm(true)}
+              className="w-full mt-3 btn btn-secondary text-sm py-2.5 flex items-center justify-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Add Job Manually
+            </button>
           </div>
 
           {/* Job List */}
@@ -1069,6 +1460,11 @@ export default function JobsPanel() {
                         {t.icon} {job.trade}
                       </span>
                       <span className="text-xs text-[var(--color-text-muted)]">📍 {job.postcode}</span>
+                      {job.job_exist === 'Yes' && (
+                        <span className="badge text-[10px] px-1.5 py-0 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                          EXISTING JOB
+                        </span>
+                      )}
                       {job.assigned_engineer && job.status === 'ASSIGNED' && (
                         <span className="badge text-[10px] px-1.5 py-0 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 ml-auto flex items-center gap-1">
                           👷 {job.assigned_engineer} · ASSIGNED ✓
@@ -1153,6 +1549,16 @@ export default function JobsPanel() {
                     {selectedJob.status.replace('_', ' ')}
                     {selectedJob.status === 'ASSIGNED' && ' ✓'}
                   </span>
+                  {selectedJob.job_exist === 'Yes' && (
+                    <span className="badge text-xs px-2 py-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                      EXISTING JOB
+                    </span>
+                  )}
+                  {selectedJob.sm8_job_uuid && (
+                    <span className="text-[10px] font-mono text-[var(--color-text-muted)]" title="ServiceM8 Job UUID">
+                      SM8: {selectedJob.sm8_job_uuid.slice(0, 8)}...
+                    </span>
+                  )}
                   {isEditing ? (
                     <div className="flex items-center gap-2">
                       <button
@@ -1415,14 +1821,62 @@ export default function JobsPanel() {
                 </div>
               </div>
 
-              {/* Find Best Engineer Button */}
-              <button
-                onClick={() => setShowEngineerPanel(true)}
-                className="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 transition-all duration-200 shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2"
-              >
-                <span className="w-2 h-2 rounded-full bg-white" />
-                Find Best Engineer in ServiceM8
-              </button>
+              {/* Action Buttons — different options for new vs existing jobs */}
+              {selectedJob.job_exist === 'Yes' ? (
+                <div className="space-y-3">
+                  {/* Status-only update */}
+                  <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 border border-[var(--color-border)]">
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-3">
+                      Update Job Status Only
+                    </p>
+                    <p className="text-xs text-[var(--color-text-muted)] mb-3">
+                      Change the status in ServiceM8 without assigning an engineer
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={statusUpdateValue}
+                        onChange={(e) => setStatusUpdateValue(e.target.value)}
+                        className="input text-sm flex-1"
+                      >
+                        <option value="Work Order">Work Order</option>
+                        <option value="Quote">Quote</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Unsuccessful">Unsuccessful</option>
+                      </select>
+                      <button
+                        onClick={handleStatusOnlyUpdate}
+                        disabled={isUpdatingStatus}
+                        className="btn btn-secondary text-sm px-4 py-2.5 flex items-center gap-1.5"
+                      >
+                        {isUpdatingStatus ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Check className="w-4 h-4" />
+                        )}
+                        Update Status
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Assign engineer to existing job */}
+                  <button
+                    onClick={() => setShowEngineerPanel(true)}
+                    className="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 transition-all duration-200 shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-white" />
+                    Assign Engineer to Existing SM8 Job
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowEngineerPanel(true)}
+                  className="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 transition-all duration-200 shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2"
+                >
+                  <span className="w-2 h-2 rounded-full bg-white" />
+                  Find Best Engineer in ServiceM8
+                </button>
+              )}
 
               {/* Search Specific Engineer */}
               <div>
