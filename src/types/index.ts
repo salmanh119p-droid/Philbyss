@@ -149,6 +149,7 @@ export interface Job {
   scheduled_date: string | null;
   sm8_job_uuid: string | null;
   job_exist: string | null;
+  job_type: string | null;
   works_due_by: string | null;
   date_raised: string;
   created_at: string;

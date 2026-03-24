@@ -1614,6 +1614,16 @@ export default function JobsPanel() {
                           EXISTING JOB
                         </span>
                       )}
+                      {job.job_type && (
+                        <span className={clsx(
+                          'badge text-[10px] px-1.5 py-0',
+                          job.job_type === 'QUOTE'
+                            ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                            : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                        )}>
+                          {job.job_type}
+                        </span>
+                      )}
                       {job.assigned_engineer && job.status === 'ASSIGNED' && (
                         <span className="badge text-[10px] px-1.5 py-0 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 ml-auto flex items-center gap-1">
                           👷 {job.assigned_engineer} · ASSIGNED ✓
@@ -1666,6 +1676,20 @@ export default function JobsPanel() {
                 <ArrowLeft className="w-4 h-4" />
                 Back to Jobs
               </button>
+
+              {/* Job Type Badge */}
+              {selectedJob.job_type && (
+                <div className="mb--3">
+                  <span className={clsx(
+                    'inline-flex items-center px-3 py-1.5 rounded-md text-sm font-semibold tracking-wide',
+                    selectedJob.job_type === 'QUOTE'
+                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                      : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                  )}>
+                    {selectedJob.job_type}
+                  </span>
+                </div>
+              )}
 
               {/* Detail Header */}
               <div className="flex flex-wrap items-center justify-between gap-3">
