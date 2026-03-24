@@ -146,6 +146,7 @@ export interface Job {
   fixflo_ref: string | null;
   assigned_by: string | null;
   assigned_engineer: string | null;
+  scheduled_date: string | null;
   sm8_job_uuid: string | null;
   job_exist: string | null;
   works_due_by: string | null;

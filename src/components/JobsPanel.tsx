@@ -332,6 +332,11 @@ export default function JobsPanel() {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [showAddJobForm, setShowAddJobForm] = useState(false);
   const [isAddingJob, setIsAddingJob] = useState(false);
+  const [companies, setCompanies] = useState<{ id: number; Name: string; company_ids: string; address: string }[]>([]);
+  const [companySearch, setCompanySearch] = useState('');
+  const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
+  const [accessArrangement, setAccessArrangement] = useState('');
+  const [isSendingAccess, setIsSendingAccess] = useState(false);
   const [newJob, setNewJob] = useState({
     job_title: '',
     trade: 'General',
@@ -341,6 +346,7 @@ export default function JobsPanel() {
     landlord: '',
     landlord_email: '',
     company: '',
+    company_id: '',
     tenant_name: '',
     tenant_phone: '',
     tenant_email: '',
@@ -462,10 +468,20 @@ export default function JobsPanel() {
     init();
   }, [fetchJobs, fetchStats, fetchJobsWithMaterials]);
 
+  // ── Fetch companies for dropdown ──
+  useEffect(() => {
+    const fetchCompanies = async () => {
+      const { data } = await supabase.from('Companys').select('id, Name, company_ids, address').order('Name');
+      if (data) setCompanies(data);
+    };
+    fetchCompanies();
+  }, []);
+
   // ── Fetch materials when selected job changes ──
   useEffect(() => {
     if (selectedJob) {
       fetchMaterials(selectedJob.id);
+      setAccessArrangement('');
     } else {
       setMaterials([]);
     }
@@ -555,6 +571,8 @@ export default function JobsPanel() {
             body: JSON.stringify({
               staff_uuid: engineer.sm8_uuid,
               days: 7,
+              start_time: '08:00',
+              end_time: '18:00',
               job_ref: job.job_ref,
               trade: job.trade,
               postcode: job.postcode,
@@ -677,7 +695,7 @@ export default function JobsPanel() {
         showToast(
           `✓ Assigned to ${data.assigned_to} — ${formattedDate} ${data.scheduled.start}–${data.scheduled.end}`
         );
-        updateJobLocally(selectedJob.job_ref, 'ASSIGNED', pendingAssignment.staff_name);
+        updateJobLocally(selectedJob.job_ref, 'ASSIGNED', pendingAssignment.staff_name, pendingAssignment.slot_date);
         handleClearSpecificEngineer();
         setShowEngineerPanel(false);
       }
@@ -690,8 +708,8 @@ export default function JobsPanel() {
     }
   };
 
-  const handleJobAssignedFromPanel = (jobRef: string, engineerName: string) => {
-    updateJobLocally(jobRef, 'ASSIGNED', engineerName);
+  const handleJobAssignedFromPanel = (jobRef: string, engineerName: string, scheduledDate?: string) => {
+    updateJobLocally(jobRef, 'ASSIGNED', engineerName, scheduledDate);
   };
 
   const handleStatusOnlyUpdate = async () => {
@@ -770,6 +788,7 @@ export default function JobsPanel() {
       landlord: newJob.landlord.trim() || null,
       landlord_email: newJob.landlord_email.trim() || null,
       company: newJob.company.trim() || null,
+      company_id: newJob.company_id || null,
       tenant_name: newJob.tenant_name.trim() || null,
       tenant_phone: newJob.tenant_phone.trim() || null,
       tenant_email: newJob.tenant_email.trim() || null,
@@ -822,6 +841,7 @@ export default function JobsPanel() {
       landlord: '',
       landlord_email: '',
       company: '',
+      company_id: '',
       tenant_name: '',
       tenant_phone: '',
       tenant_email: '',
@@ -834,9 +854,33 @@ export default function JobsPanel() {
       po_number: '',
       job_status: 'Work Order',
     });
+    setCompanySearch('');
     fetchJobs(searchQuery);
     fetchStats();
     setIsAddingJob(false);
+  };
+
+  const handleSendAccessInfo = async () => {
+    if (!selectedJob || !accessArrangement.trim()) return;
+    setIsSendingAccess(true);
+    try {
+      await fetch('https://n8n.srv1177154.hstgr.cloud/webhook/exsiting_job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job_ref: selectedJob.job_ref,
+          sm8_job_uuid: selectedJob.sm8_job_uuid || null,
+          access_arrangement: accessArrangement.trim(),
+          action: 'access_info',
+        }),
+      });
+      showToast(`✓ Access info sent for ${selectedJob.job_ref}`);
+      setAccessArrangement('');
+    } catch {
+      showToast('Failed to send access info');
+    } finally {
+      setIsSendingAccess(false);
+    }
   };
 
   const calculateDuration = (start: string, end: string): string => {
@@ -849,17 +893,17 @@ export default function JobsPanel() {
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   };
 
-  const updateJobLocally = (jobRef: string, newStatus: string, engineerName: string) => {
+  const updateJobLocally = (jobRef: string, newStatus: string, engineerName: string, scheduledDate?: string) => {
     setJobs((prev) =>
       prev.map((j) =>
         j.job_ref === jobRef
-          ? { ...j, status: newStatus, assigned_engineer: engineerName }
+          ? { ...j, status: newStatus, assigned_engineer: engineerName, scheduled_date: scheduledDate || j.scheduled_date }
           : j
       )
     );
     if (selectedJob && selectedJob.job_ref === jobRef) {
       setSelectedJob((prev) =>
-        prev ? { ...prev, status: newStatus, assigned_engineer: engineerName } : prev
+        prev ? { ...prev, status: newStatus, assigned_engineer: engineerName, scheduled_date: scheduledDate || prev.scheduled_date } : prev
       );
     }
   };
@@ -1157,15 +1201,48 @@ export default function JobsPanel() {
                     className="input text-sm"
                   />
                 </div>
-                <div>
+                <div className="relative">
                   <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Company / Agency</label>
                   <input
                     type="text"
-                    value={newJob.company}
-                    onChange={(e) => setNewJob({ ...newJob, company: e.target.value })}
-                    placeholder="e.g. Kinleigh Folkard & Hayward"
+                    value={companySearch}
+                    onChange={(e) => {
+                      setCompanySearch(e.target.value);
+                      setShowCompanyDropdown(true);
+                      if (!e.target.value.trim()) {
+                        setNewJob({ ...newJob, company: '', company_id: '' });
+                      }
+                    }}
+                    onFocus={() => setShowCompanyDropdown(true)}
+                    placeholder="Search company..."
                     className="input text-sm"
                   />
+                  {showCompanyDropdown && companySearch.trim() && (
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg max-h-40 overflow-y-auto shadow-lg">
+                      {companies
+                        .filter((c) => c.Name?.toLowerCase().includes(companySearch.toLowerCase()))
+                        .map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setNewJob({ ...newJob, company: c.Name, company_id: c.company_ids });
+                              setCompanySearch(c.Name);
+                              setShowCompanyDropdown(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]"
+                          >
+                            <span className="font-medium">{c.Name}</span>
+                            {c.address && (
+                              <span className="text-[10px] text-[var(--color-text-muted)] ml-2">{c.address}</span>
+                            )}
+                          </button>
+                        ))}
+                      {companies.filter((c) => c.Name?.toLowerCase().includes(companySearch.toLowerCase())).length === 0 && (
+                        <p className="px-3 py-2 text-xs text-[var(--color-text-muted)]">No companies found</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1612,6 +1689,11 @@ export default function JobsPanel() {
                       👷 {selectedJob.assigned_engineer}
                     </span>
                   )}
+                  {selectedJob.scheduled_date && (
+                    <span className="badge text-xs px-2 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center gap-1">
+                      📅 {new Date(selectedJob.scheduled_date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    </span>
+                  )}
                   <span
                     className={clsx(
                       'badge text-xs px-3 py-1',
@@ -1890,6 +1972,32 @@ export default function JobsPanel() {
                       Add
                     </button>
                   </div>
+                </div>
+              </div>
+
+              {/* Access Arrangement */}
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-2">
+                  🔑 Access Arrangement
+                </p>
+                <div className="bg-[var(--color-bg-secondary)] rounded-lg p-4 border border-[var(--color-border)]">
+                  <textarea
+                    value={accessArrangement}
+                    onChange={(e) => setAccessArrangement(e.target.value)}
+                    placeholder="e.g. Key in lockbox code 1234, ring buzzer for Flat 8..."
+                    className="input text-sm w-full min-h-[80px] mb-3"
+                  />
+                  <button
+                    onClick={handleSendAccessInfo}
+                    disabled={isSendingAccess || !accessArrangement.trim()}
+                    className={clsx(
+                      'btn btn-secondary text-sm px-4 py-2 flex items-center gap-1.5',
+                      (!accessArrangement.trim() || isSendingAccess) && 'opacity-50 cursor-not-allowed'
+                    )}
+                  >
+                    {isSendingAccess ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    Send Access Info to SM8
+                  </button>
                 </div>
               </div>
 
