@@ -769,7 +769,7 @@ export default function JobsPanel() {
       tenant_name: newJob.tenant_name.trim() || null,
       tenant_phone: newJob.tenant_phone.trim() || null,
       tenant_email: newJob.tenant_email.trim() || null,
-      job_description: newJob.job_description.trim() || null,
+      job_description: newJob.job_description.trim() || '',
       instruction_notes: newJob.instruction_notes.trim() || null,
       fault_detail: newJob.fault_detail.trim() || null,
       job_exist: newJob.job_exist,
@@ -977,7 +977,7 @@ export default function JobsPanel() {
   }
 
   return (
-    <div className="animate-fade-in">
+    <>
       {/* Toast notification */}
       {toast && (
         <div className="fixed top-20 right-4 z-50 bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-lg px-4 py-3 shadow-lg animate-slide-up">
@@ -1331,6 +1331,7 @@ export default function JobsPanel() {
         </div>
       )}
 
+      <div className="animate-fade-in">
       <div className="flex flex-col lg:flex-row gap-0 lg:gap-0" style={{ height: 'calc(100vh - 200px)' }}>
         {/* ───── LEFT SIDEBAR ───── */}
         <div
@@ -2119,6 +2120,7 @@ export default function JobsPanel() {
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
