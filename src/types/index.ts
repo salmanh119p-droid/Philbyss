@@ -147,9 +147,15 @@ export interface Job {
   assigned_by: string | null;
   assigned_engineer: string | null;
   scheduled_date: string | null;
+  scheduled_start_time: string | null;
+  scheduled_end_time: string | null;
   sm8_job_uuid: string | null;
   job_exist: string | null;
   job_type: string | null;
+  po_number: string | null;
+  job_status: string | null;
+  landlord_email: string | null;
+  company_id: string | null;
   works_due_by: string | null;
   date_raised: string;
   created_at: string;
