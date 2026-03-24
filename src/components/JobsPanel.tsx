@@ -785,6 +785,19 @@ export default function JobsPanel() {
       console.error('Error adding job:', error);
       showToast('Failed to add job');
     } else {
+      // Notify n8n about the new manual job
+      try {
+        await fetch('https://n8n.srv1177154.hstgr.cloud/webhook/exsiting_job', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...jobPayload,
+            action: 'new_manual_job',
+          }),
+        });
+      } catch (webhookErr) {
+        console.error('Webhook notification failed:', webhookErr);
+      }
       showToast(`✓ Job ${jobRef} created`);
       setShowAddJobForm(false);
       setNewJob({

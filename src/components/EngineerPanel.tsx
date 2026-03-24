@@ -878,7 +878,7 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
   return (
     <div className="fixed inset-0 z-50 bg-[var(--color-bg-primary)] overflow-y-auto">
       {/* Header banner */}
-      <div className="sticky top-0 z-10 bg-gradient-to-r from-purple-600 to-blue-600 border-b border-purple-500/30">
+      <div className="sticky top-0 z-[60] bg-gradient-to-r from-purple-600 to-blue-600 border-b border-purple-500/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
