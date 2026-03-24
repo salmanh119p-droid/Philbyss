@@ -692,7 +692,7 @@ export default function JobsPanel() {
   };
 
   const handleStatusOnlyUpdate = async () => {
-    if (!selectedJob || !selectedJob.sm8_job_uuid) return;
+    if (!selectedJob) return;
     setIsUpdatingStatus(true);
 
     try {
@@ -702,8 +702,16 @@ export default function JobsPanel() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            sm8_job_uuid: selectedJob.sm8_job_uuid,
+            sm8_job_uuid: selectedJob.sm8_job_uuid || null,
             job_ref: selectedJob.job_ref,
+            job_title: selectedJob.job_title,
+            property_address: selectedJob.property_address,
+            postcode: selectedJob.postcode,
+            trade: selectedJob.trade,
+            priority: selectedJob.priority,
+            tenant_name: selectedJob.tenant_name,
+            tenant_phone: selectedJob.tenant_phone,
+            tenant_email: selectedJob.tenant_email,
             new_status: statusUpdateValue,
             action: 'status_only',
           }),
@@ -1420,6 +1428,7 @@ export default function JobsPanel() {
                 if (statusFilter === 'UNASSIGNED') return job.status === 'UNASSIGNED';
                 if (statusFilter === 'ASSIGNED') return job.status === 'ASSIGNED' || job.status === 'IN_PROGRESS';
                 if (statusFilter === 'MATERIALS') return jobsWithMaterials.has(job.id);
+                if (statusFilter === 'EXISTING') return job.job_exist === 'Yes';
                 return true;
               }).map((job) => {
                 const isSelected = selectedJob?.id === job.id;
