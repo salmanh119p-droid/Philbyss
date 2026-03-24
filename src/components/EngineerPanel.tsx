@@ -39,7 +39,7 @@ interface EngineerPanelProps {
   job: Job;
   onClose: () => void;
   onToast: (message: string) => void;
-  onJobAssigned?: (jobRef: string, engineerName: string) => void;
+  onJobAssigned?: (jobRef: string, engineerName: string, scheduledDate?: string) => void;
 }
 
 // ── Avatar colors ──
@@ -736,6 +736,8 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
               job_description: job.job_description,
               postcode: job.postcode,
               priority: job.priority,
+              start_time: '08:00',
+              end_time: '18:00',
               ...range,
             }),
           }
@@ -851,7 +853,7 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
         onToast(
           `✓ Assigned to ${data.assigned_to} — ${formattedDate} ${data.scheduled.start}–${data.scheduled.end}`
         );
-        onJobAssigned?.(job.job_ref, pendingAssignment.staff_name);
+        onJobAssigned?.(job.job_ref, pendingAssignment.staff_name, pendingAssignment.slot_date);
         onClose();
       }
     } catch (err: unknown) {
