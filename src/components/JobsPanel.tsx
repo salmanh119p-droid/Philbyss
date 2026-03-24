@@ -339,6 +339,7 @@ export default function JobsPanel() {
     property_address: '',
     postcode: '',
     landlord: '',
+    landlord_email: '',
     company: '',
     tenant_name: '',
     tenant_phone: '',
@@ -349,6 +350,8 @@ export default function JobsPanel() {
     source: 'MANUAL',
     job_exist: 'No',
     sm8_job_uuid: '',
+    po_number: '',
+    job_status: 'Work Order',
   });
 
   // Search Specific Engineer state
@@ -765,6 +768,7 @@ export default function JobsPanel() {
       property_address: newJob.property_address.trim(),
       postcode: newJob.postcode.trim().toUpperCase(),
       landlord: newJob.landlord.trim() || null,
+      landlord_email: newJob.landlord_email.trim() || null,
       company: newJob.company.trim() || null,
       tenant_name: newJob.tenant_name.trim() || null,
       tenant_phone: newJob.tenant_phone.trim() || null,
@@ -776,6 +780,8 @@ export default function JobsPanel() {
       sm8_job_uuid: newJob.job_exist === 'Yes' && newJob.sm8_job_uuid.trim()
         ? newJob.sm8_job_uuid.trim()
         : null,
+      po_number: newJob.po_number.trim() || null,
+      job_status: newJob.job_status,
       date_raised: new Date().toISOString(),
     };
 
@@ -814,6 +820,7 @@ export default function JobsPanel() {
       property_address: '',
       postcode: '',
       landlord: '',
+      landlord_email: '',
       company: '',
       tenant_name: '',
       tenant_phone: '',
@@ -824,6 +831,8 @@ export default function JobsPanel() {
       source: 'MANUAL',
       job_exist: 'No',
       sm8_job_uuid: '',
+      po_number: '',
+      job_status: 'Work Order',
     });
     fetchJobs(searchQuery);
     fetchStats();
@@ -1101,8 +1110,33 @@ export default function JobsPanel() {
                 </div>
               </div>
 
-              {/* Landlord + Company */}
+              {/* PO Number + Job Status */}
               <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">PO Number</label>
+                  <input
+                    type="text"
+                    value={newJob.po_number}
+                    onChange={(e) => setNewJob({ ...newJob, po_number: e.target.value })}
+                    placeholder="e.g. PO-12345"
+                    className="input text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Job Status</label>
+                  <select
+                    value={newJob.job_status}
+                    onChange={(e) => setNewJob({ ...newJob, job_status: e.target.value })}
+                    className="input text-sm"
+                  >
+                    <option value="Work Order">Work Order</option>
+                    <option value="Quote">Quote</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Landlord + Landlord Email + Company */}
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Landlord</label>
                   <input
@@ -1110,6 +1144,16 @@ export default function JobsPanel() {
                     value={newJob.landlord}
                     onChange={(e) => setNewJob({ ...newJob, landlord: e.target.value })}
                     placeholder="Landlord name"
+                    className="input text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Landlord Email</label>
+                  <input
+                    type="email"
+                    value={newJob.landlord_email}
+                    onChange={(e) => setNewJob({ ...newJob, landlord_email: e.target.value })}
+                    placeholder="landlord@email.com"
                     className="input text-sm"
                   />
                 </div>
