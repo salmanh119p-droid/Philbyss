@@ -79,22 +79,7 @@ npm install
    - Add the service account email (looks like: `name@project.iam.gserviceaccount.com`)
    - Give "Viewer" access
 
-### 3. Environment Variables
 
-Create a `.env.local` file in the root directory:
-
-```env
-# Dashboard password (change this!)
-DASHBOARD_PASSWORD=your-secure-password
-
-# Paste the ENTIRE contents of your JSON key file here (as a single line)
-GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}
-
-# Spreadsheet IDs (already configured for Philbys)
-INVOICE_SHEET_ID=1yjd2XlpYz7-L9ZyJTTu1Fwkj4qupAWXDJK1Fmk0kyK0
-PAYSLIP_SHEET_ID=1aMdn-F2_Gwntn7ZTj7IzsNHGSWrWjSpcYSaQrXlWqjY
-ENGINEER_RATES_SHEET_ID=1nSnxxgmog46Rb5tj8aeCW9S98qSaU5_srtk_CYO0Yxw
-```
 
 ### 4. Run Locally
 
