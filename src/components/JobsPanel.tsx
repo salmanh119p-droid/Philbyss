@@ -779,53 +779,54 @@ export default function JobsPanel() {
       date_raised: new Date().toISOString(),
     };
 
-    const { data, error } = await supabase.from('jobs').insert(jobPayload).select();
-
-    if (error) {
-      console.error('Error adding job:', error);
-      showToast('Failed to add job');
-    } else {
-      // Notify n8n about the new manual job
-      try {
-        await fetch('https://n8n.srv1177154.hstgr.cloud/webhook/exsiting_job', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...jobPayload,
-            action: 'new_manual_job',
-          }),
-        });
-      } catch (webhookErr) {
-        console.error('Webhook notification failed:', webhookErr);
-      }
-      showToast(`✓ Job ${jobRef} created`);
-      setShowAddJobForm(false);
-      setNewJob({
-        job_title: '',
-        trade: 'General',
-        priority: 'MEDIUM',
-        property_address: '',
-        postcode: '',
-        landlord: '',
-        company: '',
-        tenant_name: '',
-        tenant_phone: '',
-        tenant_email: '',
-        job_description: '',
-        instruction_notes: '',
-        fault_detail: '',
-        source: 'MANUAL',
-        job_exist: 'No',
-        sm8_job_uuid: '',
+    // 1. Send webhook to n8n FIRST — primary action
+    try {
+      await fetch('https://n8n.srv1177154.hstgr.cloud/webhook/exsiting_job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...jobPayload,
+          action: 'new_manual_job',
+        }),
       });
-      if (data && data.length > 0) {
-        setSelectedJob(data[0]);
-        setShowDetail(true);
-      }
-      fetchJobs(searchQuery);
-      fetchStats();
+      showToast(`✓ Job ${jobRef} sent to n8n`);
+    } catch (webhookErr) {
+      console.error('Webhook failed:', webhookErr);
+      showToast(`Failed to send job to n8n`);
     }
 
+    // 2. Also save to Supabase for local tracking
+    const { data, error } = await supabase.from('jobs').insert(jobPayload).select();
+    if (error) {
+      console.error('Supabase insert error:', error);
+    }
+    if (!error && data && data.length > 0) {
+      setSelectedJob(data[0]);
+      setShowDetail(true);
+    }
+
+    // 3. Reset form and refresh
+    setShowAddJobForm(false);
+    setNewJob({
+      job_title: '',
+      trade: 'General',
+      priority: 'MEDIUM',
+      property_address: '',
+      postcode: '',
+      landlord: '',
+      company: '',
+      tenant_name: '',
+      tenant_phone: '',
+      tenant_email: '',
+      job_description: '',
+      instruction_notes: '',
+      fault_detail: '',
+      source: 'MANUAL',
+      job_exist: 'No',
+      sm8_job_uuid: '',
+    });
+    fetchJobs(searchQuery);
+    fetchStats();
     setIsAddingJob(false);
   };
 
