@@ -876,18 +876,19 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-[var(--color-bg-primary)]/95 backdrop-blur-sm overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-[var(--color-bg-primary)] overflow-y-auto">
       {/* Header banner */}
-      <div className="sticky top-0 z-10 bg-gradient-to-r from-purple-600/90 to-blue-600/90 backdrop-blur-sm border-b border-purple-500/30">
+      <div className="sticky top-0 z-10 bg-gradient-to-r from-purple-600 to-blue-600 border-b border-purple-500/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
               <button
                 onClick={onClose}
-                className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors mr-1"
+                className="p-2 rounded-lg bg-white/15 text-white hover:bg-white/25 transition-colors mr-1 flex items-center gap-1.5"
                 title="Back to job"
               >
                 <ArrowLeft className="w-5 h-5" />
+                <span className="text-sm font-medium">Back</span>
               </button>
               <span className="w-2 h-2 rounded-full bg-white" />
               <h2 className="text-lg font-bold text-white">
