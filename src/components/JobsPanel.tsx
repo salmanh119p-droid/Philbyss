@@ -695,7 +695,20 @@ export default function JobsPanel() {
         showToast(
           `✓ Assigned to ${data.assigned_to} — ${formattedDate} ${data.scheduled.start}–${data.scheduled.end}`
         );
-        updateJobLocally(selectedJob.job_ref, 'ASSIGNED', pendingAssignment.staff_name, pendingAssignment.slot_date);
+        updateJobLocally(selectedJob.job_ref, 'ASSIGNED', pendingAssignment.staff_name, pendingAssignment.slot_date, finalStart, finalEnd);
+
+        // Save scheduled visit to Supabase
+        await supabase
+          .from('jobs')
+          .update({
+            assigned_engineer: pendingAssignment.staff_name,
+            status: 'ASSIGNED',
+            scheduled_date: pendingAssignment.slot_date,
+            scheduled_start_time: finalStart,
+            scheduled_end_time: finalEnd,
+          })
+          .eq('job_ref', selectedJob.job_ref);
+
         handleClearSpecificEngineer();
         setShowEngineerPanel(false);
       }
@@ -708,8 +721,25 @@ export default function JobsPanel() {
     }
   };
 
-  const handleJobAssignedFromPanel = (jobRef: string, engineerName: string, scheduledDate?: string) => {
-    updateJobLocally(jobRef, 'ASSIGNED', engineerName, scheduledDate);
+  const handleJobAssignedFromPanel = async (
+    jobRef: string,
+    engineerName: string,
+    scheduledDate?: string,
+    scheduledStart?: string,
+    scheduledEnd?: string
+  ) => {
+    updateJobLocally(jobRef, 'ASSIGNED', engineerName, scheduledDate, scheduledStart, scheduledEnd);
+
+    // Save to Supabase
+    const updatePayload: Record<string, string> = {
+      assigned_engineer: engineerName,
+      status: 'ASSIGNED',
+    };
+    if (scheduledDate) updatePayload.scheduled_date = scheduledDate;
+    if (scheduledStart) updatePayload.scheduled_start_time = scheduledStart;
+    if (scheduledEnd) updatePayload.scheduled_end_time = scheduledEnd;
+
+    await supabase.from('jobs').update(updatePayload).eq('job_ref', jobRef);
   };
 
   const handleStatusOnlyUpdate = async () => {
@@ -893,18 +923,27 @@ export default function JobsPanel() {
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   };
 
-  const updateJobLocally = (jobRef: string, newStatus: string, engineerName: string, scheduledDate?: string) => {
+  const updateJobLocally = (
+    jobRef: string,
+    newStatus: string,
+    engineerName: string,
+    scheduledDate?: string,
+    scheduledStart?: string,
+    scheduledEnd?: string
+  ) => {
+    const updates: Partial<Job> = {
+      status: newStatus,
+      assigned_engineer: engineerName,
+    };
+    if (scheduledDate) updates.scheduled_date = scheduledDate;
+    if (scheduledStart) updates.scheduled_start_time = scheduledStart;
+    if (scheduledEnd) updates.scheduled_end_time = scheduledEnd;
+
     setJobs((prev) =>
-      prev.map((j) =>
-        j.job_ref === jobRef
-          ? { ...j, status: newStatus, assigned_engineer: engineerName, scheduled_date: scheduledDate || j.scheduled_date }
-          : j
-      )
+      prev.map((j) => (j.job_ref === jobRef ? { ...j, ...updates } : j))
     );
     if (selectedJob && selectedJob.job_ref === jobRef) {
-      setSelectedJob((prev) =>
-        prev ? { ...prev, status: newStatus, assigned_engineer: engineerName, scheduled_date: scheduledDate || prev.scheduled_date } : prev
-      );
+      setSelectedJob((prev) => (prev ? { ...prev, ...updates } : prev));
     }
   };
 
@@ -1636,6 +1675,16 @@ export default function JobsPanel() {
                       )}
                     </div>
 
+                    {/* Scheduled visit */}
+                    {job.scheduled_date && job.status === 'ASSIGNED' && (
+                      <p className="text-[10px] text-blue-400 mt-0.5 flex items-center gap-1">
+                        📅 {new Date(job.scheduled_date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                        {job.scheduled_start_time && job.scheduled_end_time && (
+                          <> · {job.scheduled_start_time}–{job.scheduled_end_time}</>
+                        )}
+                      </p>
+                    )}
+
                     {/* Address */}
                     <p className="text-xs text-[var(--color-text-muted)] mt-1 truncate">
                       {job.property_address}
@@ -1677,20 +1726,6 @@ export default function JobsPanel() {
                 Back to Jobs
               </button>
 
-              {/* Job Type Badge */}
-              {selectedJob.job_type && (
-                <div className="mb--3">
-                  <span className={clsx(
-                    'inline-flex items-center px-3 py-1.5 rounded-md text-sm font-semibold tracking-wide',
-                    selectedJob.job_type === 'QUOTE'
-                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                      : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                  )}>
-                    {selectedJob.job_type}
-                  </span>
-                </div>
-              )}
-
               {/* Detail Header */}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1706,6 +1741,16 @@ export default function JobsPanel() {
                   <span className={clsx('text-xs flex items-center gap-1', priority(selectedJob.priority).color)}>
                     {priority(selectedJob.priority).dot} {selectedJob.priority}
                   </span>
+                  {selectedJob.job_type && (
+                    <span className={clsx(
+                      'badge text-xs px-2 py-0.5 border',
+                      selectedJob.job_type === 'QUOTE'
+                        ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                        : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                    )}>
+                      {selectedJob.job_type}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   {selectedJob.assigned_engineer && (
@@ -1716,6 +1761,9 @@ export default function JobsPanel() {
                   {selectedJob.scheduled_date && (
                     <span className="badge text-xs px-2 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center gap-1">
                       📅 {new Date(selectedJob.scheduled_date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      {selectedJob.scheduled_start_time && selectedJob.scheduled_end_time && (
+                        <> · {selectedJob.scheduled_start_time}–{selectedJob.scheduled_end_time}</>
+                      )}
                     </span>
                   )}
                   <span
@@ -1875,6 +1923,41 @@ export default function JobsPanel() {
                   )}
                 </div>
               </div>
+
+              {/* Scheduled Visit */}
+              {selectedJob.status === 'ASSIGNED' && selectedJob.assigned_engineer && (
+                <div className="bg-emerald-500/5 rounded-lg p-4 border border-emerald-500/20">
+                  <p className="text-[10px] uppercase tracking-wider text-emerald-400 font-semibold mb-2">
+                    📅 Scheduled Visit
+                  </p>
+                  <div className="flex flex-wrap items-center gap-4 text-sm">
+                    <div>
+                      <span className="text-[var(--color-text-muted)]">Engineer: </span>
+                      <span className="text-[var(--color-text-primary)] font-semibold">
+                        {selectedJob.assigned_engineer}
+                      </span>
+                    </div>
+                    {selectedJob.scheduled_date && (
+                      <div>
+                        <span className="text-[var(--color-text-muted)]">Date: </span>
+                        <span className="text-[var(--color-text-primary)] font-semibold">
+                          {new Date(selectedJob.scheduled_date + 'T00:00:00').toLocaleDateString('en-GB', {
+                            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+                          })}
+                        </span>
+                      </div>
+                    )}
+                    {selectedJob.scheduled_start_time && selectedJob.scheduled_end_time && (
+                      <div>
+                        <span className="text-[var(--color-text-muted)]">Time: </span>
+                        <span className="text-[var(--color-text-primary)] font-semibold">
+                          {selectedJob.scheduled_start_time} – {selectedJob.scheduled_end_time}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Job Description */}
               <div>
