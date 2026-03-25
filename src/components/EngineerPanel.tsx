@@ -289,6 +289,21 @@ function AvailabilityGrid({
                       ...day.free_slots.map((s) => ({ ...s, type: 'free' as const, job_uuid: '' })),
                     ]
                       .sort((a, b) => a.start.localeCompare(b.start))
+                      .filter((slot) => slot.end > '08:00' && slot.start < '18:00')
+                      .map((slot) => ({
+                        ...slot,
+                        start: slot.start < '08:00' ? '08:00' : slot.start,
+                        end: slot.end > '18:00' ? '18:00' : slot.end,
+                      }))
+                      .map((slot) => {
+                        if (slot.type === 'free') {
+                          const [sh, sm] = slot.start.split(':').map(Number);
+                          const [eh, em] = slot.end.split(':').map(Number);
+                          const hours = Math.round(((eh * 60 + em) - (sh * 60 + sm)) / 60 * 10) / 10;
+                          return { ...slot, hours };
+                        }
+                        return slot;
+                      })
                       .map((slot, i) =>
                         slot.type === 'booked' ? (
                           <div
