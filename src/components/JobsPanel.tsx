@@ -683,6 +683,7 @@ export default function JobsPanel() {
         tenant_email: selectedJob.tenant_email,
         company_name: selectedJob.company || null,
         landlord: selectedJob.landlord || null,
+        source: selectedJob.source,
         action: 'assign_engineer',
       };
 
@@ -1271,7 +1272,7 @@ export default function JobsPanel() {
                     placeholder="Search company..."
                     className="input text-sm"
                   />
-                  {showCompanyDropdown && companySearch.trim() && (
+                  {showCompanyDropdown && (
                     <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg max-h-40 overflow-y-auto shadow-lg">
                       {companies
                         .filter((c) => c.Name?.toLowerCase().includes(companySearch.toLowerCase()))
