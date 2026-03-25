@@ -874,17 +874,7 @@ export default function JobsPanel() {
       showToast(`Failed to send job to n8n`);
     }
 
-    // 2. Also save to Supabase for local tracking
-    const { data, error } = await supabase.from('jobs').insert(jobPayload).select();
-    if (error) {
-      console.error('Supabase insert error:', error);
-    }
-    if (!error && data && data.length > 0) {
-      setSelectedJob(data[0]);
-      setShowDetail(true);
-    }
-
-    // 3. Reset form and refresh
+    // 2. Reset form and refresh
     setShowAddJobForm(false);
     setNewJob({
       job_title: '',
