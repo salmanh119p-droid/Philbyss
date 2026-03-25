@@ -487,7 +487,15 @@ export default function JobsPanel() {
   useEffect(() => {
     const fetchCompanies = async () => {
       const { data } = await supabase.from('Companys').select('id, Name, company_ids, address').order('Name');
-      if (data) setCompanies(data);
+      if (data) {
+        const cleaned = data
+          .map((c) => ({
+            ...c,
+            Name: (c.Name || '').replace(/^\(|\)$/g, '').trim(),
+          }))
+          .filter((c) => c.Name.length > 1);
+        setCompanies(cleaned);
+      }
     };
     fetchCompanies();
   }, []);
@@ -1256,7 +1264,7 @@ export default function JobsPanel() {
                     className="input text-sm"
                   />
                 </div>
-                <div className="relative">
+                <div>
                   <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Company / Agency</label>
                   <input
                     type="text"
@@ -1269,13 +1277,15 @@ export default function JobsPanel() {
                       }
                     }}
                     onFocus={() => setShowCompanyDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowCompanyDropdown(false), 200)}
                     placeholder="Search company..."
                     className="input text-sm"
                   />
                   {showCompanyDropdown && (
-                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg max-h-40 overflow-y-auto shadow-lg">
+                    <div className="mt-1 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg max-h-40 overflow-y-auto shadow-lg">
                       {companies
                         .filter((c) => c.Name?.toLowerCase().includes(companySearch.toLowerCase()))
+                        .slice(0, 20)
                         .map((c) => (
                           <button
                             key={c.id}
@@ -1285,11 +1295,11 @@ export default function JobsPanel() {
                               setCompanySearch(c.Name);
                               setShowCompanyDropdown(false);
                             }}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]"
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--color-bg-hover)] text-[var(--color-text-primary)] border-b border-[var(--color-border)] last:border-b-0"
                           >
                             <span className="font-medium">{c.Name}</span>
                             {c.address && (
-                              <span className="text-[10px] text-[var(--color-text-muted)] ml-2">{c.address}</span>
+                              <span className="text-[10px] text-[var(--color-text-muted)] ml-2 truncate">{c.address}</span>
                             )}
                           </button>
                         ))}
