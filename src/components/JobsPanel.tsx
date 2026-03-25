@@ -188,6 +188,21 @@ function SpecificEngineerAvailabilityGrid({
                       ...day.free_slots.map((s) => ({ ...s, type: 'free' as const, job_uuid: '' })),
                     ]
                       .sort((a, b) => a.start.localeCompare(b.start))
+                      .filter((slot) => slot.end > '08:00' && slot.start < '18:00')
+                      .map((slot) => ({
+                        ...slot,
+                        start: slot.start < '08:00' ? '08:00' : slot.start,
+                        end: slot.end > '18:00' ? '18:00' : slot.end,
+                      }))
+                      .map((slot) => {
+                        if (slot.type === 'free') {
+                          const [sh, sm] = slot.start.split(':').map(Number);
+                          const [eh, em] = slot.end.split(':').map(Number);
+                          const hours = Math.round(((eh * 60 + em) - (sh * 60 + sm)) / 60 * 10) / 10;
+                          return { ...slot, hours };
+                        }
+                        return slot;
+                      })
                       .map((slot, i) =>
                         slot.type === 'booked' ? (
                           <div
@@ -2108,8 +2123,8 @@ export default function JobsPanel() {
                 </div>
               </div>
 
-              {/* Action Buttons — different options for new vs existing jobs */}
-              {selectedJob.job_exist === 'Yes' ? (
+              {/* Action Buttons — only show for non-assigned jobs */}
+              {selectedJob.status !== 'ASSIGNED' && selectedJob.job_exist === 'Yes' ? (
                 <div className="space-y-3">
                   {/* Status-only update */}
                   <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 border border-[var(--color-border)]">
@@ -2165,7 +2180,8 @@ export default function JobsPanel() {
                 </button>
               )}
 
-              {/* Search Specific Engineer */}
+              {/* Search Specific Engineer — only for non-assigned jobs */}
+              {selectedJob.status !== 'ASSIGNED' && (
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-2">
                   <Search className="w-3.5 h-3.5 inline-block mr-1 -mt-0.5" />
@@ -2376,6 +2392,7 @@ export default function JobsPanel() {
                   </div>
                 )}
               </div>
+              )}
             </div>
           )}
         </div>
