@@ -309,6 +309,26 @@ export interface EngineerLeave {
   engineers?: { display_name: string; sm8_uuid: string };
 }
 
+// Materials Tracking Types
+export interface MaterialTrackingRecord {
+  id: string;
+  work_order_number: string;
+  sm8_job_uuid: string | null;
+  material_description: string;
+  supplier_order_ref: string;
+  status: 'ordered' | 'arrived' | 'collected';
+  ordered_at: string | null;
+  ordered_by: string | null;
+  arrived_at: string | null;
+  arrived_marked_by: string | null;
+  collected_at: string | null;
+  collected_by_engineer: string | null;
+  handed_over_by: string | null;
+  proof_image_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // API Response Types
 export interface ApiResponse<T> {
   success: boolean;

@@ -14,6 +14,7 @@ interface StatCardProps {
   };
   color?: 'blue' | 'green' | 'amber' | 'red' | 'purple' | 'cyan';
   delay?: number;
+  onClick?: () => void;
 }
 
 const colorMap = {
@@ -57,6 +58,7 @@ export default function StatCard({
   trend,
   color = 'blue',
   delay = 0,
+  onClick,
 }: StatCardProps) {
   const colors = colorMap[color];
 
@@ -67,9 +69,11 @@ export default function StatCard({
         delay === 1 && 'animation-delay-100',
         delay === 2 && 'animation-delay-200',
         delay === 3 && 'animation-delay-300',
-        delay === 4 && 'animation-delay-400'
+        delay === 4 && 'animation-delay-400',
+        onClick && 'cursor-pointer'
       )}
       style={{ animationFillMode: 'forwards' }}
+      onClick={onClick}
     >
       <div className="flex items-start justify-between">
         <div>
