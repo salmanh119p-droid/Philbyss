@@ -21,6 +21,7 @@ import {
   Calendar,
   Menu,
   X,
+  Package,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import StatCard from '@/components/StatCard';
@@ -38,8 +39,9 @@ import MaterialSearch from '@/components/MaterialSearch';
 import JobsPanel from '@/components/JobsPanel';
 import ManageLeavePage from '@/components/ManageLeavePage';
 import VanFinesPage from '@/components/VanFinesPage';
+import MaterialsTracking from '@/components/MaterialsTracking';
 
-type TabType = 'overview' | 'invoices' | 'payroll' | 'materials' | 'jobs' | 'leave' | 'fines';
+type TabType = 'overview' | 'invoices' | 'payroll' | 'materials' | 'materials-tracking' | 'jobs' | 'leave' | 'fines';
 
 export default function DashboardClient() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -116,6 +118,7 @@ export default function DashboardClient() {
     { id: 'invoices' as TabType, label: 'Invoices', icon: FileText },
     { id: 'payroll' as TabType, label: 'Payroll', icon: Users },
     { id: 'materials' as TabType, label: 'Material Search', icon: Search },
+    { id: 'materials-tracking' as TabType, label: 'Materials Tracking', icon: Package },
     { id: 'jobs' as TabType, label: 'Jobs', icon: ClipboardList },
     { id: 'leave' as TabType, label: 'Manage Leave', icon: Calendar },
     { id: 'fines' as TabType, label: 'Van Fines', icon: Car },
@@ -438,6 +441,10 @@ export default function DashboardClient() {
 
         {activeTab === 'materials' && (
           <MaterialSearch />
+        )}
+
+        {activeTab === 'materials-tracking' && (
+          <MaterialsTracking />
         )}
 
         {activeTab === 'jobs' && (
