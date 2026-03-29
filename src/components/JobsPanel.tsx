@@ -22,6 +22,7 @@ import {
   CheckCircle,
   Pencil,
   Check,
+  ExternalLink,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { supabase } from '@/lib/supabase';
@@ -1828,6 +1829,39 @@ export default function JobsPanel() {
                   )}
                 </div>
               </div>
+
+              {/* Quote Actions */}
+              {selectedJob.job_type === 'QUOTE' && (selectedJob.quote_enter_link || selectedJob.quote_decline_link) && (
+                <div className="bg-amber-500/5 rounded-lg p-4 border border-amber-500/20">
+                  <p className="text-[10px] uppercase tracking-wider text-amber-400 font-semibold mb-3">
+                    Quote Actions
+                  </p>
+                  <div className="flex gap-3">
+                    {selectedJob.quote_enter_link && (
+                      <a
+                        href={selectedJob.quote_enter_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 py-2.5 rounded-lg font-semibold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 transition-all text-center text-sm flex items-center justify-center gap-2"
+                      >
+                        Enter Quotation
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    )}
+                    {selectedJob.quote_decline_link && (
+                      <a
+                        href={selectedJob.quote_decline_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 py-2.5 rounded-lg font-medium text-red-400 border border-red-500/30 bg-red-500/5 hover:bg-red-500/10 transition-all text-center text-sm flex items-center justify-center gap-2"
+                      >
+                        Decline to Quote
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Edit mode dropdowns for trade/priority/status */}
               {isEditing && (
