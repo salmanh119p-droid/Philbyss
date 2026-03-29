@@ -154,6 +154,8 @@ export interface Job {
   job_type: string | null;
   po_number: string | null;
   job_status: string | null;
+  quote_enter_link: string | null;
+  quote_decline_link: string | null;
   landlord_email: string | null;
   company_id: string | null;
   works_due_by: string | null;
