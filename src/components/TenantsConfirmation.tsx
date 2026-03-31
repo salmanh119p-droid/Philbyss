@@ -270,6 +270,8 @@ export default function TenantsConfirmation() {
 
   // UI
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const [contactedBy, setContactedBy] = useState('');
+  const [contactMethod, setContactMethod] = useState<'Phone' | 'Email' | 'Text' | 'Other'>('Phone');
 
   // ── Data Fetching ──
 
@@ -333,9 +335,30 @@ export default function TenantsConfirmation() {
 
   const onStatus = useCallback(
     (job: TenantJob, newStatus: string) => {
-      updateJob(job.rowNumber, { status: newStatus, lastContact: nowTimestamp() });
+      const timestamp = nowTimestamp();
+      updateJob(job.rowNumber, { status: newStatus, lastContact: timestamp });
+
+      // Fire webhook to n8n → ServiceM8 (non-blocking)
+      fetch('https://n8n.srv1177154.hstgr.cloud/webhook/tenant-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          work_order_number: job.wo,
+          status: newStatus,
+          contacted_by: contactedBy || job.manager || 'Unknown',
+          contact_method: contactMethod,
+          notes: job.notes || '',
+          engineer: job.engineer || '',
+          tenant_name: job.tenant || '',
+          tenant_phone: job.phone || '',
+          tenant_email: job.email || '',
+          scheduled_date: job.date || '',
+          scheduled_time: job.scheduledTime || '',
+          job_description: job.desc || '',
+        }),
+      }).catch((err) => console.error('SM8 webhook failed:', err));
     },
-    [updateJob]
+    [updateJob, contactedBy, contactMethod]
   );
 
   // ── Computed Values ──
@@ -806,6 +829,52 @@ export default function TenantsConfirmation() {
                     padding: 24,
                   }}
                 >
+                  {/* Contacted By + Contact Method */}
+                  <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 11, color: TH.textMuted, fontWeight: 600 }}>Contacted by</span>
+                      <input
+                        value={contactedBy}
+                        onChange={(e) => setContactedBy(e.target.value)}
+                        placeholder="Your name"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          background: TH.input,
+                          border: `1px solid ${TH.border}`,
+                          color: TH.text,
+                          borderRadius: 8,
+                          padding: '6px 10px',
+                          fontSize: 12,
+                          width: 130,
+                          fontFamily: 'inherit',
+                          outline: 'none',
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 11, color: TH.textMuted, fontWeight: 600 }}>Via</span>
+                      {(['Phone', 'Email', 'Text', 'Other'] as const).map((m) => (
+                        <button
+                          key={m}
+                          onClick={(e) => { e.stopPropagation(); setContactMethod(m); }}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: 20,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            border: contactMethod === m ? `1px solid ${TH.gold}` : `1px solid ${TH.border}`,
+                            cursor: 'pointer',
+                            background: contactMethod === m ? TH.goldDim : 'transparent',
+                            color: contactMethod === m ? TH.gold : TH.textSec,
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Status Buttons */}
                   <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
                     {STS.slice(1).map((s) => {
