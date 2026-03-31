@@ -270,8 +270,18 @@ export default function TenantsConfirmation() {
 
   // UI
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
-  const [contactedBy, setContactedBy] = useState('');
-  const [contactMethod, setContactMethod] = useState<'Phone' | 'Email' | 'Text' | 'Other'>('Phone');
+
+  // Confirmation modal
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmJob, setConfirmJob] = useState<TenantJob | null>(null);
+  const [confirmForm, setConfirmForm] = useState({
+    contacted_by: '',
+    contact_method: 'Phone' as 'Phone' | 'Email' | 'Fixflo' | 'SMS',
+    status: 'Confirmed' as string,
+    notes: '',
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // ── Data Fetching ──
 
@@ -333,33 +343,74 @@ export default function TenantsConfirmation() {
     [updateJob]
   );
 
-  const onStatus = useCallback(
-    (job: TenantJob, newStatus: string) => {
-      const timestamp = nowTimestamp();
-      updateJob(job.rowNumber, { status: newStatus, lastContact: timestamp });
+  const openConfirmModal = useCallback((job: TenantJob) => {
+    setConfirmJob(job);
+    setConfirmForm({
+      contacted_by: '',
+      contact_method: 'Phone',
+      status: 'Confirmed',
+      notes: '',
+    });
+    setShowConfirmModal(true);
+  }, []);
 
-      // Fire webhook to n8n → ServiceM8 (non-blocking)
-      fetch('https://n8n.srv1177154.hstgr.cloud/webhook/tenant-confirmation', {
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  const handleConfirmSubmit = useCallback(async () => {
+    if (!confirmJob) return;
+    if (!confirmForm.contacted_by.trim()) {
+      showToast('Please enter who contacted the client', 'error');
+      return;
+    }
+
+    setSubmitting(true);
+    const timestamp = nowTimestamp();
+
+    // Update the sheet
+    updateJob(confirmJob.rowNumber, {
+      status: confirmForm.status,
+      lastContact: timestamp,
+      notes: confirmForm.notes ? confirmForm.notes : confirmJob.notes,
+    });
+
+    // POST to n8n webhook
+    try {
+      const res = await fetch('https://n8n.srv1177154.hstgr.cloud/webhook/tenant-confirmation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          work_order_number: job.wo,
-          status: newStatus,
-          contacted_by: contactedBy || job.manager || 'Unknown',
-          contact_method: contactMethod,
-          notes: job.notes || '',
-          engineer: job.engineer || '',
-          tenant_name: job.tenant || '',
-          tenant_phone: job.phone || '',
-          tenant_email: job.email || '',
-          scheduled_date: job.date || '',
-          scheduled_time: job.scheduledTime || '',
-          job_description: job.desc || '',
+          work_order_number: confirmJob.wo,
+          status: confirmForm.status,
+          contacted_by: confirmForm.contacted_by.trim(),
+          contact_method: confirmForm.contact_method,
+          notes: confirmForm.notes || '',
+          engineer: confirmJob.engineer || '',
+          tenant_name: confirmJob.tenant || '',
+          tenant_phone: confirmJob.phone || '',
+          tenant_email: confirmJob.email || '',
+          scheduled_date: confirmJob.date || '',
+          scheduled_time: confirmJob.scheduledTime || '',
+          job_description: confirmJob.desc || '',
         }),
-      }).catch((err) => console.error('SM8 webhook failed:', err));
-    },
-    [updateJob, contactedBy, contactMethod]
-  );
+      });
+      const result = await res.json();
+      if (result.success) {
+        showToast(`Confirmation logged for WO #${confirmJob.wo}`);
+      } else {
+        showToast(result.message || 'Webhook returned an error', 'error');
+      }
+    } catch (err) {
+      console.error('SM8 webhook failed:', err);
+      showToast('Failed to send to ServiceM8 — sheet was updated', 'error');
+    } finally {
+      setSubmitting(false);
+      setShowConfirmModal(false);
+      setConfirmJob(null);
+    }
+  }, [confirmJob, confirmForm, updateJob, showToast]);
 
   // ── Computed Values ──
 
@@ -829,80 +880,31 @@ export default function TenantsConfirmation() {
                     padding: 24,
                   }}
                 >
-                  {/* Contacted By + Contact Method */}
-                  <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 11, color: TH.textMuted, fontWeight: 600 }}>Contacted by</span>
-                      <input
-                        value={contactedBy}
-                        onChange={(e) => setContactedBy(e.target.value)}
-                        placeholder="Your name"
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                          background: TH.input,
-                          border: `1px solid ${TH.border}`,
-                          color: TH.text,
-                          borderRadius: 8,
-                          padding: '6px 10px',
-                          fontSize: 12,
-                          width: 130,
-                          fontFamily: 'inherit',
-                          outline: 'none',
-                        }}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 11, color: TH.textMuted, fontWeight: 600 }}>Via</span>
-                      {(['Phone', 'Email', 'Text', 'Other'] as const).map((m) => (
-                        <button
-                          key={m}
-                          onClick={(e) => { e.stopPropagation(); setContactMethod(m); }}
-                          style={{
-                            padding: '5px 12px',
-                            borderRadius: 20,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            border: contactMethod === m ? `1px solid ${TH.gold}` : `1px solid ${TH.border}`,
-                            cursor: 'pointer',
-                            background: contactMethod === m ? TH.goldDim : 'transparent',
-                            color: contactMethod === m ? TH.gold : TH.textSec,
-                            transition: 'all 0.15s',
-                          }}
-                        >
-                          {m}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Status Buttons */}
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-                    {STS.slice(1).map((s) => {
-                      const c = SC[s];
-                      const isActive = job.status === s;
-                      return (
-                        <button
-                          key={s}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onStatus(job, s);
-                          }}
-                          style={{
-                            padding: '8px 18px',
-                            borderRadius: 8,
-                            fontSize: 12,
-                            fontWeight: 700,
-                            border: isActive ? `2px solid ${c.text}` : `1px solid ${TH.border}`,
-                            cursor: 'pointer',
-                            background: isActive ? c.bg : 'transparent',
-                            color: isActive ? c.text : TH.textSec,
-                            transition: 'all 0.15s',
-                          }}
-                        >
-                          {s}
-                        </button>
-                      );
-                    })}
+                  {/* Log Confirmation Button */}
+                  <div style={{ marginBottom: 24 }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openConfirmModal(job);
+                      }}
+                      style={{
+                        padding: '10px 24px',
+                        borderRadius: 10,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        border: `1px solid ${TH.gold}`,
+                        cursor: 'pointer',
+                        background: TH.goldDim,
+                        color: TH.gold,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <Check size={16} />
+                      Log Tenant Confirmation
+                    </button>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
@@ -1108,6 +1110,275 @@ export default function TenantsConfirmation() {
 
       {/* Keyframes */}
       <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
+
+      {/* ── CONFIRMATION MODAL ── */}
+      {showConfirmModal && confirmJob && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 60,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(0,0,0,0.6)',
+            backdropFilter: 'blur(4px)',
+          }}
+          onClick={() => { if (!submitting) { setShowConfirmModal(false); setConfirmJob(null); } }}
+        >
+          <div
+            style={{
+              background: TH.card,
+              border: `1px solid ${TH.border}`,
+              borderRadius: 16,
+              padding: 28,
+              maxWidth: 480,
+              width: '100%',
+              margin: '0 16px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: TH.text, margin: 0 }}>
+                Log Tenant Confirmation
+              </h3>
+              <button
+                onClick={() => { setShowConfirmModal(false); setConfirmJob(null); }}
+                disabled={submitting}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: TH.textMuted,
+                  padding: 4,
+                  borderRadius: 8,
+                  display: 'flex',
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Job Number (read-only) */}
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TH.textSec, marginBottom: 6 }}>
+                Job Number
+              </label>
+              <div
+                style={{
+                  background: TH.bg,
+                  border: `1px solid ${TH.border}`,
+                  borderRadius: 10,
+                  padding: '10px 14px',
+                  fontSize: 14,
+                  color: TH.gold,
+                  fontFamily: 'monospace',
+                  fontWeight: 700,
+                }}
+              >
+                {confirmJob.wo}
+              </div>
+            </div>
+
+            {/* Contacted By */}
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TH.textSec, marginBottom: 6 }}>
+                Who contacted the client? <span style={{ color: '#EF4444' }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={confirmForm.contacted_by}
+                onChange={(e) => setConfirmForm({ ...confirmForm, contacted_by: e.target.value })}
+                placeholder="e.g. Sarah, Nick, James"
+                disabled={submitting}
+                style={{
+                  width: '100%',
+                  background: TH.input,
+                  border: `1px solid ${TH.border}`,
+                  borderRadius: 10,
+                  padding: '10px 14px',
+                  color: TH.text,
+                  fontSize: 13,
+                  fontFamily: 'inherit',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {/* Contact Method */}
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TH.textSec, marginBottom: 8 }}>
+                How was confirmation done? <span style={{ color: '#EF4444' }}>*</span>
+              </label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['Phone', 'Email', 'Fixflo', 'SMS'] as const).map((m) => {
+                  const active = confirmForm.contact_method === m;
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => setConfirmForm({ ...confirmForm, contact_method: m })}
+                      disabled={submitting}
+                      style={{
+                        flex: 1,
+                        padding: '10px 0',
+                        borderRadius: 10,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        border: active ? `2px solid ${TH.gold}` : `1px solid ${TH.border}`,
+                        cursor: 'pointer',
+                        background: active ? TH.goldDim : 'transparent',
+                        color: active ? TH.gold : TH.textSec,
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {m}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Status */}
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TH.textSec, marginBottom: 8 }}>
+                Status <span style={{ color: '#EF4444' }}>*</span>
+              </label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {STS.slice(1).map((s) => {
+                  const c = SC[s];
+                  const active = confirmForm.status === s;
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => setConfirmForm({ ...confirmForm, status: s })}
+                      disabled={submitting}
+                      style={{
+                        flex: 1,
+                        padding: '10px 0',
+                        borderRadius: 10,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        border: active ? `2px solid ${c.text}` : `1px solid ${TH.border}`,
+                        cursor: 'pointer',
+                        background: active ? c.bg : 'transparent',
+                        color: active ? c.text : TH.textSec,
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {s}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TH.textSec, marginBottom: 6 }}>
+                Notes (optional)
+              </label>
+              <textarea
+                value={confirmForm.notes}
+                onChange={(e) => setConfirmForm({ ...confirmForm, notes: e.target.value })}
+                placeholder="e.g. Tenant confirmed for morning slot"
+                rows={3}
+                disabled={submitting}
+                style={{
+                  width: '100%',
+                  background: TH.input,
+                  border: `1px solid ${TH.border}`,
+                  borderRadius: 10,
+                  padding: '10px 14px',
+                  color: TH.text,
+                  fontSize: 13,
+                  fontFamily: 'inherit',
+                  outline: 'none',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => { setShowConfirmModal(false); setConfirmJob(null); }}
+                disabled={submitting}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: 10,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  border: `1px solid ${TH.border}`,
+                  cursor: 'pointer',
+                  background: 'transparent',
+                  color: TH.textSec,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmSubmit}
+                disabled={submitting}
+                style={{
+                  padding: '10px 24px',
+                  borderRadius: 10,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  border: 'none',
+                  cursor: submitting ? 'not-allowed' : 'pointer',
+                  background: TH.gold,
+                  color: TH.bg,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  opacity: submitting ? 0.7 : 1,
+                }}
+              >
+                {submitting ? (
+                  <>
+                    <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} />
+                    Confirm
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TOAST ── */}
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            zIndex: 70,
+            padding: '12px 20px',
+            borderRadius: 12,
+            fontSize: 13,
+            fontWeight: 600,
+            color: '#fff',
+            background: toast.type === 'success' ? 'rgba(52,211,153,0.9)' : 'rgba(239,68,68,0.9)',
+            backdropFilter: 'blur(8px)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            animation: 'fadeIn 0.2s ease',
+          }}
+        >
+          {toast.message}
+        </div>
+      )}
+      <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:translateY(0) } }`}</style>
     </div>
   );
 }
