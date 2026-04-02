@@ -384,6 +384,38 @@ export default function VanFinesPage() {
     }
   };
 
+  // ── Delete fine ──
+  const deleteFine = async (id: string) => {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/van_fines?id=eq.${id}`, {
+        method: 'DELETE',
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+      });
+      setFines((prev) => prev.filter((f) => f.id !== id));
+      showToast('Fine deleted', 'success');
+    } catch {
+      showToast('Failed to delete fine', 'error');
+    }
+  };
+
+  // ── Update fine status ──
+  const updateFineStatus = async (id: string, newStatus: string) => {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/van_fines?id=eq.${id}`, {
+        method: 'PATCH',
+        headers: SUPABASE_HEADERS,
+        body: JSON.stringify({ status: newStatus }),
+      });
+      setFines((prev) => prev.map((f) => (f.id === id ? { ...f, status: newStatus } : f)));
+      showToast(`Status updated to ${newStatus}`, 'success');
+    } catch {
+      showToast('Failed to update status', 'error');
+    }
+  };
+
   // ── Delete vehicle ──
   const deleteVehicle = async (id: string, reg: string) => {
     try {
@@ -677,16 +709,18 @@ export default function VanFinesPage() {
                           </td>
                           {/* Status */}
                           <td className="py-3 px-3">
-                            <span
+                            <button
+                              onClick={() => fine.id && updateFineStatus(fine.id, fine.status === 'Paid' ? 'Not Paid' : 'Paid')}
                               className={clsx(
-                                'badge text-[10px] px-2 py-0.5',
-                                fine.status === 'PROCESSED'
+                                'badge text-[10px] px-2 py-0.5 cursor-pointer hover:opacity-75 transition-opacity',
+                                fine.status === 'Paid'
                                   ? 'bg-emerald-500/20 text-emerald-400'
                                   : 'bg-amber-500/20 text-amber-400'
                               )}
+                              title="Click to toggle status"
                             >
-                              {fine.status || 'PENDING'}
-                            </span>
+                              {fine.status === 'Paid' ? 'Paid' : 'Not Paid'}
+                            </button>
                           </td>
                           {/* Image */}
                           <td className="py-3 px-3">
@@ -724,13 +758,22 @@ export default function VanFinesPage() {
                                 </button>
                               </div>
                             ) : fine.id ? (
-                              <button
-                                onClick={() => startEditFine(fine)}
-                                className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
-                                title="Edit"
-                              >
-                                <Pencil className="w-3.5 h-3.5" />
-                              </button>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => startEditFine(fine)}
+                                  className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
+                                  title="Edit"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => deleteFine(fine.id!)}
+                                  className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             ) : null}
                           </td>
                         </tr>
