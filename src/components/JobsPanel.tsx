@@ -337,7 +337,7 @@ export default function JobsPanel() {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [stats, setStats] = useState({ total: 0, unassigned: 0, assigned: 0, materials: 0, existing: 0 });
+  const [stats, setStats] = useState({ total: 0, unassigned: 0, assigned: 0, materials: 0, existing: 0, archived: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [newMaterialName, setNewMaterialName] = useState('');
   const [addingMaterial, setAddingMaterial] = useState(false);
@@ -406,8 +406,12 @@ export default function JobsPanel() {
   }, [selectedJob]);
 
   // ── Fetch jobs ──
-  const fetchJobs = useCallback(async (query = '') => {
+  const fetchJobs = useCallback(async (query = '', includeArchived = false) => {
     let q = supabase.from('jobs').select('*').order('created_at', { ascending: false });
+
+    if (!includeArchived) {
+      q = q.eq('is_archived', false);
+    }
 
     if (query.trim()) {
       q = q.or(
@@ -436,12 +440,13 @@ export default function JobsPanel() {
 
   // ── Fetch stats ──
   const fetchStats = useCallback(async () => {
-    const [totalRes, unassignedRes, assignedRes, materialsRes, existingRes] = await Promise.all([
-      supabase.from('jobs').select('*', { count: 'exact', head: true }),
-      supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('status', 'UNASSIGNED'),
-      supabase.from('jobs').select('*', { count: 'exact', head: true }).in('status', ['ASSIGNED', 'IN_PROGRESS']),
+    const [totalRes, unassignedRes, assignedRes, materialsRes, existingRes, archivedRes] = await Promise.all([
+      supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('is_archived', false),
+      supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('status', 'UNASSIGNED').eq('is_archived', false),
+      supabase.from('jobs').select('*', { count: 'exact', head: true }).in('status', ['ASSIGNED', 'IN_PROGRESS']).eq('is_archived', false),
       supabase.from('materials').select('*', { count: 'exact', head: true }),
-      supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('job_exist', 'Yes'),
+      supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('job_exist', 'Yes').eq('is_archived', false),
+      supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('is_archived', true),
     ]);
 
     setStats({
@@ -450,6 +455,7 @@ export default function JobsPanel() {
       assigned: assignedRes.count ?? 0,
       materials: materialsRes.count ?? 0,
       existing: existingRes.count ?? 0,
+      archived: archivedRes.count ?? 0,
     });
   }, []);
 
@@ -488,6 +494,11 @@ export default function JobsPanel() {
     init();
   }, [fetchJobs, fetchStats, fetchJobsWithMaterials]);
 
+  // ── Re-fetch when ARCHIVED filter toggled ──
+  useEffect(() => {
+    fetchJobs(searchQuery, statusFilter === 'ARCHIVED');
+  }, [statusFilter, fetchJobs, searchQuery]);
+
   // ── Fetch companies for dropdown ──
   useEffect(() => {
     const fetchCompanies = async () => {
@@ -523,7 +534,7 @@ export default function JobsPanel() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'jobs' },
         (payload) => {
-          fetchJobs(searchQuery);
+          fetchJobs(searchQuery, statusFilter === 'ARCHIVED');
           fetchStats();
           if (payload.eventType === 'INSERT') {
             const newJob = payload.new as Job;
@@ -735,6 +746,7 @@ export default function JobsPanel() {
             scheduled_date: pendingAssignment.slot_date,
             scheduled_start_time: finalStart,
             scheduled_end_time: finalEnd,
+            is_archived: true,
           })
           .eq('job_ref', selectedJob.job_ref);
 
@@ -760,9 +772,10 @@ export default function JobsPanel() {
     updateJobLocally(jobRef, 'ASSIGNED', engineerName, scheduledDate, scheduledStart, scheduledEnd);
 
     // Save to Supabase
-    const updatePayload: Record<string, string> = {
+    const updatePayload: Record<string, string | boolean> = {
       assigned_engineer: engineerName,
       status: 'ASSIGNED',
+      is_archived: true,
     };
     if (scheduledDate) updatePayload.scheduled_date = scheduledDate;
     if (scheduledStart) updatePayload.scheduled_start_time = scheduledStart;
@@ -954,6 +967,7 @@ export default function JobsPanel() {
       status: newStatus,
       assigned_engineer: engineerName,
     };
+    if (newStatus === 'ASSIGNED') updates.is_archived = true;
     if (scheduledDate) updates.scheduled_date = scheduledDate;
     if (scheduledStart) updates.scheduled_start_time = scheduledStart;
     if (scheduledEnd) updates.scheduled_end_time = scheduledEnd;
@@ -984,7 +998,7 @@ export default function JobsPanel() {
     setSearchQuery(value);
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     searchTimeoutRef.current = setTimeout(() => {
-      fetchJobs(value);
+      fetchJobs(value, statusFilter === 'ARCHIVED');
     }, 300);
   };
 
@@ -1545,13 +1559,14 @@ export default function JobsPanel() {
             </div>
 
             {/* Stat cards */}
-            <div className="grid grid-cols-5 gap-2 mb-4">
+            <div className="grid grid-cols-6 gap-2 mb-4">
               {[
                 { label: 'TOTAL', value: stats.total, color: 'text-[var(--color-text-primary)]', filter: null as string | null },
                 { label: 'UNASSIGNED', value: stats.unassigned, color: 'text-red-400', filter: 'UNASSIGNED' },
                 { label: 'ASSIGNED', value: stats.assigned, color: 'text-blue-400', filter: 'ASSIGNED' },
                 { label: 'MATERIALS', value: stats.materials, color: 'text-amber-400', filter: 'MATERIALS' },
                 { label: 'EXISTING', value: stats.existing, color: 'text-cyan-400', filter: 'EXISTING' },
+                { label: 'ARCHIVED', value: stats.archived, color: 'text-gray-400', filter: 'ARCHIVED' },
               ].map((card) => (
                 <button
                   key={card.label}
@@ -1613,6 +1628,7 @@ export default function JobsPanel() {
               if (statusFilter === 'ASSIGNED') return job.status === 'ASSIGNED' || job.status === 'IN_PROGRESS';
               if (statusFilter === 'MATERIALS') return jobsWithMaterials.has(job.id);
               if (statusFilter === 'EXISTING') return job.job_exist === 'Yes';
+              if (statusFilter === 'ARCHIVED') return true;
               return true;
             }).length === 0 ? (
               <div className="text-center py-8">
@@ -1625,6 +1641,7 @@ export default function JobsPanel() {
                 if (statusFilter === 'ASSIGNED') return job.status === 'ASSIGNED' || job.status === 'IN_PROGRESS';
                 if (statusFilter === 'MATERIALS') return jobsWithMaterials.has(job.id);
                 if (statusFilter === 'EXISTING') return job.job_exist === 'Yes';
+                if (statusFilter === 'ARCHIVED') return true;
                 return true;
               }).map((job) => {
                 const isSelected = selectedJob?.id === job.id;
