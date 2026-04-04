@@ -162,6 +162,7 @@ export interface Job {
   date_raised: string;
   created_at: string;
   updated_at: string;
+  is_archived?: boolean;
 }
 
 export interface Material {
