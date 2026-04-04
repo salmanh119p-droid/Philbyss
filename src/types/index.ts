@@ -178,6 +178,7 @@ export interface EngineerBookedSlot {
   end: string;
   hours: number;
   job_uuid: string;
+  postcode?: string;
 }
 
 export interface EngineerFreeSlot {
