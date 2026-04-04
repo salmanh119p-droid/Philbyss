@@ -154,7 +154,11 @@ function AvailabilityGrid({
                             className="text-[11px] px-1.5 py-1 rounded bg-[var(--color-bg-card)] border border-[var(--color-border)] text-[var(--color-text-muted)]"
                           >
                             {slot.start}–{slot.end}{' '}
-                            <span className="text-[10px]">(booked)</span>
+                            {slot.postcode ? (
+                              <span className="text-[10px] text-red-400 font-medium">📍 {slot.postcode}</span>
+                            ) : (
+                              <span className="text-[10px]">(booked)</span>
+                            )}
                           </div>
                         ) : (
                           <div
