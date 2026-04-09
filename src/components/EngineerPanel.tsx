@@ -560,7 +560,7 @@ function AssignConfirmDialog({
   assignment: SlotAssignment;
   job: Job;
   isAssigning: boolean;
-  onConfirm: (start: string, end: string) => void;
+  onConfirm: (start: string, end: string, contactTenant?: string) => void;
   onCancel: () => void;
 }) {
   const slotDate = new Date(assignment.slot_date + 'T00:00:00');
@@ -582,6 +582,7 @@ function AssignConfirmDialog({
     const endM = (endMins % 60).toString().padStart(2, '0');
     return `${endH}:${endM}`;
   });
+  const [contactTenant, setContactTenant] = useState<'none' | 'sms' | 'email'>('none');
 
   const calculateDuration = (start: string, end: string): string => {
     const [sh, sm] = start.split(':').map(Number);
@@ -666,6 +667,47 @@ function AssignConfirmDialog({
               </p>
             </div>
 
+            {/* Contact Tenant */}
+            <div className="bg-[var(--color-bg-secondary)] rounded-lg p-4 border border-[var(--color-border)] mb-6">
+              <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-3">
+                Contact Tenant
+              </p>
+              <div className="flex gap-2">
+                {([
+                  { value: 'none' as const, label: 'Don\'t Contact', icon: null },
+                  { value: 'sms' as const, label: `SMS`, icon: '💬', disabled: !job.tenant_phone },
+                  { value: 'email' as const, label: `Email`, icon: '📧', disabled: !job.tenant_email },
+                ]).map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => !option.disabled && setContactTenant(option.value)}
+                    disabled={option.disabled}
+                    className={clsx(
+                      'flex-1 py-2.5 rounded-lg text-sm font-medium border transition-all text-center',
+                      contactTenant === option.value
+                        ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                        : option.disabled
+                          ? 'bg-[var(--color-bg-card)] text-[var(--color-text-muted)] border-[var(--color-border)] opacity-40 cursor-not-allowed'
+                          : 'bg-[var(--color-bg-card)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-[var(--color-border-light)]'
+                    )}
+                  >
+                    {option.icon && <span className="mr-1">{option.icon}</span>}
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              {contactTenant === 'sms' && job.tenant_phone && (
+                <p className="text-xs text-[var(--color-text-muted)] mt-2">
+                  SMS will be sent to <span className="text-emerald-400">{job.tenant_phone}</span>
+                </p>
+              )}
+              {contactTenant === 'email' && job.tenant_email && (
+                <p className="text-xs text-[var(--color-text-muted)] mt-2">
+                  Email will be sent to <span className="text-blue-400">{job.tenant_email}</span>
+                </p>
+              )}
+            </div>
+
             <div className="flex gap-3">
               <button
                 onClick={onCancel}
@@ -674,7 +716,7 @@ function AssignConfirmDialog({
                 Cancel
               </button>
               <button
-                onClick={() => onConfirm(adjustedStart, adjustedEnd)}
+                onClick={() => onConfirm(adjustedStart, adjustedEnd, contactTenant)}
                 disabled={!isValid}
                 className={clsx(
                   'flex-1 py-2.5 rounded-lg font-semibold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 transition-all flex items-center justify-center gap-2',
@@ -812,7 +854,7 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
     setPendingAssignment(assignment);
   };
 
-  const handleConfirmAssign = async (adjustedStart?: string, adjustedEnd?: string) => {
+  const handleConfirmAssign = async (adjustedStart?: string, adjustedEnd?: string, contactTenant?: string) => {
     if (!pendingAssignment) return;
     setIsAssigning(true);
 
@@ -847,6 +889,7 @@ export default function EngineerPanel({ job, onClose, onToast, onJobAssigned }: 
         landlord: job.landlord || null,
         source: job.source,
         action: 'assign_engineer',
+        contact_tenant: contactTenant || 'none',
       };
 
       if (isExistingJob) {

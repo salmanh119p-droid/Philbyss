@@ -396,6 +396,7 @@ export default function JobsPanel() {
   const [isAssigning, setIsAssigning] = useState(false);
   const [dialogAdjustedStart, setDialogAdjustedStart] = useState('');
   const [dialogAdjustedEnd, setDialogAdjustedEnd] = useState('');
+  const [contactTenant, setContactTenant] = useState<'none' | 'sms' | 'email'>('none');
 
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const selectedJobRef = useRef<string | null>(null);
@@ -672,9 +673,10 @@ export default function JobsPanel() {
     setDialogAdjustedEnd(
       `${Math.floor(endMins / 60).toString().padStart(2, '0')}:${(endMins % 60).toString().padStart(2, '0')}`
     );
+    setContactTenant('none');
   };
 
-  const handleConfirmAssign = async (adjustedStart?: string, adjustedEnd?: string) => {
+  const handleConfirmAssign = async (adjustedStart?: string, adjustedEnd?: string, contactTenant?: string) => {
     if (!pendingAssignment || !selectedJob) return;
     setIsAssigning(true);
 
@@ -709,6 +711,7 @@ export default function JobsPanel() {
         landlord: selectedJob.landlord || null,
         source: selectedJob.source,
         action: 'assign_engineer',
+        contact_tenant: contactTenant || 'none',
       };
 
       if (isExistingJob) {
@@ -1502,6 +1505,47 @@ export default function JobsPanel() {
                   </p>
                 </div>
 
+                {/* Contact Tenant */}
+                <div className="bg-[var(--color-bg-secondary)] rounded-lg p-4 border border-[var(--color-border)] mb-6">
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-3">
+                    Contact Tenant
+                  </p>
+                  <div className="flex gap-2">
+                    {([
+                      { value: 'none' as const, label: 'Don\'t Contact', icon: null },
+                      { value: 'sms' as const, label: `SMS`, icon: '💬', disabled: !selectedJob.tenant_phone },
+                      { value: 'email' as const, label: `Email`, icon: '📧', disabled: !selectedJob.tenant_email },
+                    ]).map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => !option.disabled && setContactTenant(option.value)}
+                        disabled={option.disabled}
+                        className={clsx(
+                          'flex-1 py-2.5 rounded-lg text-sm font-medium border transition-all text-center',
+                          contactTenant === option.value
+                            ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                            : option.disabled
+                              ? 'bg-[var(--color-bg-card)] text-[var(--color-text-muted)] border-[var(--color-border)] opacity-40 cursor-not-allowed'
+                              : 'bg-[var(--color-bg-card)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-[var(--color-border-light)]'
+                        )}
+                      >
+                        {option.icon && <span className="mr-1">{option.icon}</span>}
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  {contactTenant === 'sms' && selectedJob.tenant_phone && (
+                    <p className="text-xs text-[var(--color-text-muted)] mt-2">
+                      SMS will be sent to <span className="text-emerald-400">{selectedJob.tenant_phone}</span>
+                    </p>
+                  )}
+                  {contactTenant === 'email' && selectedJob.tenant_email && (
+                    <p className="text-xs text-[var(--color-text-muted)] mt-2">
+                      Email will be sent to <span className="text-blue-400">{selectedJob.tenant_email}</span>
+                    </p>
+                  )}
+                </div>
+
                 <div className="flex gap-3">
                   <button
                     onClick={() => setPendingAssignment(null)}
@@ -1510,7 +1554,7 @@ export default function JobsPanel() {
                     Cancel
                   </button>
                   <button
-                    onClick={() => handleConfirmAssign(dialogAdjustedStart, dialogAdjustedEnd)}
+                    onClick={() => handleConfirmAssign(dialogAdjustedStart, dialogAdjustedEnd, contactTenant)}
                     disabled={dialogAdjustedStart >= dialogAdjustedEnd || dialogAdjustedStart < pendingAssignment.slot_start || dialogAdjustedEnd > pendingAssignment.slot_end}
                     className={clsx(
                       'flex-1 py-2.5 rounded-lg font-semibold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 transition-all flex items-center justify-center gap-2',
