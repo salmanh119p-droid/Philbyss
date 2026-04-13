@@ -13,6 +13,8 @@ import {
   X,
   Loader2,
   Upload,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { supabase } from '@/lib/supabase';
@@ -119,6 +121,20 @@ export default function MaterialsTracking() {
   // Details modal
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [detailsItem, setDetailsItem] = useState<MaterialTrackingRecord | null>(null);
+
+  // Edit modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editItem, setEditItem] = useState<MaterialTrackingRecord | null>(null);
+  const [editForm, setEditForm] = useState({
+    work_order_number: '',
+    material_description: '',
+    supplier_order_ref: '',
+    ordered_by: '',
+  });
+
+  // Delete confirmation modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteItem, setDeleteItem] = useState<MaterialTrackingRecord | null>(null);
 
   // Submitting state
   const [submitting, setSubmitting] = useState(false);
@@ -311,6 +327,79 @@ export default function MaterialsTracking() {
     setShowDetailsModal(true);
   };
 
+  const openEditModal = (item: MaterialTrackingRecord) => {
+    setEditItem(item);
+    setEditForm({
+      work_order_number: item.work_order_number,
+      material_description: item.material_description,
+      supplier_order_ref: item.supplier_order_ref,
+      ordered_by: item.ordered_by || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const openDeleteModal = (item: MaterialTrackingRecord) => {
+    setDeleteItem(item);
+    setShowDeleteModal(true);
+  };
+
+  const handleEditSubmit = async () => {
+    if (!editItem) return;
+    if (!editForm.work_order_number.trim() || !editForm.material_description.trim() || !editForm.supplier_order_ref.trim()) {
+      showToast('Please fill in all required fields', 'error');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from('materials_tracking')
+        .update({
+          work_order_number: editForm.work_order_number.trim(),
+          material_description: editForm.material_description.trim(),
+          supplier_order_ref: editForm.supplier_order_ref.trim(),
+          ordered_by: editForm.ordered_by.trim() || 'Office Staff',
+        })
+        .eq('id', editItem.id);
+
+      if (error) throw error;
+
+      showToast('Material record updated successfully');
+      setShowEditModal(false);
+      setEditItem(null);
+      fetchMaterials();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update record';
+      showToast(message, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteItem) return;
+
+    setSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from('materials_tracking')
+        .delete()
+        .eq('id', deleteItem.id);
+
+      if (error) throw error;
+
+      showToast('Material record deleted');
+      setShowDeleteModal(false);
+      setDeleteItem(null);
+      fetchMaterials();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to delete record';
+      showToast(message, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // ── Render ─────────────────────────────────────────────────────
 
   if (loading) {
@@ -478,31 +567,47 @@ export default function MaterialsTracking() {
                     )}
                   </td>
                   <td className="table-cell py-3 px-4 text-right">
-                    {item.status === 'ordered' && (
+                    <div className="flex items-center justify-end gap-1.5">
+                      {item.status === 'ordered' && (
+                        <button
+                          onClick={() => openArrivedModal(item)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-colors"
+                        >
+                          Mark Arrived
+                        </button>
+                      )}
+                      {item.status === 'arrived' && (
+                        <button
+                          onClick={() => openCollectedModal(item)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+                        >
+                          Mark Collected
+                        </button>
+                      )}
+                      {item.status === 'collected' && (
+                        <button
+                          onClick={() => openDetailsModal(item)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] transition-colors"
+                        >
+                          <Eye className="w-3 h-3 inline mr-1" />
+                          View Details
+                        </button>
+                      )}
                       <button
-                        onClick={() => openArrivedModal(item)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-colors"
+                        onClick={() => openEditModal(item)}
+                        className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
+                        title="Edit"
                       >
-                        Mark Arrived
+                        <Pencil className="w-3.5 h-3.5" />
                       </button>
-                    )}
-                    {item.status === 'arrived' && (
                       <button
-                        onClick={() => openCollectedModal(item)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+                        onClick={() => openDeleteModal(item)}
+                        className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        title="Delete"
                       >
-                        Mark Collected
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
-                    )}
-                    {item.status === 'collected' && (
-                      <button
-                        onClick={() => openDetailsModal(item)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] transition-colors"
-                      >
-                        <Eye className="w-3 h-3 inline mr-1" />
-                        View Details
-                      </button>
-                    )}
+                    </div>
                   </td>
                 </tr>
               ))
@@ -532,30 +637,46 @@ export default function MaterialsTracking() {
                 <span className="text-xs text-[var(--color-text-muted)]">
                   Ordered {formatDate(item.ordered_at)}
                 </span>
-                {item.status === 'ordered' && (
+                <div className="flex items-center gap-1.5">
+                  {item.status === 'ordered' && (
+                    <button
+                      onClick={() => openArrivedModal(item)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                    >
+                      Mark Arrived
+                    </button>
+                  )}
+                  {item.status === 'arrived' && (
+                    <button
+                      onClick={() => openCollectedModal(item)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                    >
+                      Mark Collected
+                    </button>
+                  )}
+                  {item.status === 'collected' && (
+                    <button
+                      onClick={() => openDetailsModal(item)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)]"
+                    >
+                      View Details
+                    </button>
+                  )}
                   <button
-                    onClick={() => openArrivedModal(item)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                    onClick={() => openEditModal(item)}
+                    className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
+                    title="Edit"
                   >
-                    Mark Arrived
+                    <Pencil className="w-3.5 h-3.5" />
                   </button>
-                )}
-                {item.status === 'arrived' && (
                   <button
-                    onClick={() => openCollectedModal(item)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                    onClick={() => openDeleteModal(item)}
+                    className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    title="Delete"
                   >
-                    Mark Collected
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
-                )}
-                {item.status === 'collected' && (
-                  <button
-                    onClick={() => openDetailsModal(item)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)]"
-                  >
-                    View Details
-                  </button>
-                )}
+                </div>
               </div>
             </div>
           ))
@@ -652,6 +773,168 @@ export default function MaterialsTracking() {
                   <>
                     <Plus className="w-4 h-4 mr-2" />
                     Order Materials
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EDIT MATERIAL MODAL ───────────────────────────────── */}
+      {showEditModal && editItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold">Edit Material</h3>
+              <button
+                onClick={() => { setShowEditModal(false); setEditItem(null); }}
+                className="p-1 rounded-lg hover:bg-[var(--color-bg-hover)] transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  Work Order Number <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={editForm.work_order_number}
+                  onChange={(e) => setEditForm({ ...editForm, work_order_number: e.target.value })}
+                  className="input text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  Material Description <span className="text-red-400">*</span>
+                </label>
+                <textarea
+                  value={editForm.material_description}
+                  onChange={(e) => setEditForm({ ...editForm, material_description: e.target.value })}
+                  rows={3}
+                  className="input text-sm resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  Supplier Order Reference <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={editForm.supplier_order_ref}
+                  onChange={(e) => setEditForm({ ...editForm, supplier_order_ref: e.target.value })}
+                  className="input text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  Ordered By
+                </label>
+                <input
+                  type="text"
+                  value={editForm.ordered_by}
+                  onChange={(e) => setEditForm({ ...editForm, ordered_by: e.target.value })}
+                  placeholder="Office Staff"
+                  className="input text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => { setShowEditModal(false); setEditItem(null); }}
+                className="btn btn-secondary"
+                disabled={submitting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSubmit}
+                className="btn btn-primary"
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Save Changes
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DELETE CONFIRMATION MODAL ────────────────────────────── */}
+      {showDeleteModal && deleteItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-red-400">Delete Material</h3>
+              <button
+                onClick={() => { setShowDeleteModal(false); setDeleteItem(null); }}
+                className="p-1 rounded-lg hover:bg-[var(--color-bg-hover)] transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-sm text-[var(--color-text-secondary)] mb-4">
+              Are you sure you want to delete this material record? This action cannot be undone.
+            </p>
+
+            <div className="bg-[var(--color-bg-secondary)] rounded-lg p-4 space-y-2 mb-6">
+              <div className="flex justify-between text-sm">
+                <span className="text-[var(--color-text-muted)]">Work Order</span>
+                <span className="font-medium">{deleteItem.work_order_number}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-[var(--color-text-muted)]">Material</span>
+                <span className="font-medium text-right max-w-[60%]">{deleteItem.material_description}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-[var(--color-text-muted)]">Supplier Ref</span>
+                <span className="font-medium">{deleteItem.supplier_order_ref}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-[var(--color-text-muted)]">Status</span>
+                <StatusBadge status={deleteItem.status} />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setShowDeleteModal(false); setDeleteItem(null); }}
+                className="btn btn-secondary"
+                disabled={submitting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="px-4 py-2 rounded-lg font-medium text-sm bg-red-500 text-white hover:bg-red-600 transition-colors inline-flex items-center"
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
                   </>
                 )}
               </button>
