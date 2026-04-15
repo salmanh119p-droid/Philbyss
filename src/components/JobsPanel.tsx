@@ -345,6 +345,7 @@ export default function JobsPanel() {
   const [showDetail, setShowDetail] = useState(false); // mobile detail view
   const [showEngineerPanel, setShowEngineerPanel] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [typeTab, setTypeTab] = useState<'all' | 'work_order' | 'quote'>('all');
   const [jobsWithMaterials, setJobsWithMaterials] = useState<Set<string>>(new Set());
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Job>>({});
@@ -1092,6 +1093,22 @@ export default function JobsPanel() {
   const status = (s: string) => STATUS_CONFIG[s] || STATUS_CONFIG.UNASSIGNED;
   const source = (s: string) => SOURCE_CONFIG[s] || SOURCE_CONFIG.FIXFLO;
 
+  // ── Compose Type tab + status filter into a single visible list ──
+  const matchesTypeTab = (job: Job) => {
+    if (typeTab === 'quote')      return job.job_type === 'QUOTE';
+    if (typeTab === 'work_order') return job.job_type !== 'QUOTE';
+    return true;
+  };
+  const visibleJobs = jobs.filter((job) => {
+    if (!matchesTypeTab(job)) return false;
+    if (statusFilter === 'UNASSIGNED') return job.status === 'UNASSIGNED';
+    if (statusFilter === 'ASSIGNED') return job.status === 'ASSIGNED' || job.status === 'IN_PROGRESS';
+    if (statusFilter === 'MATERIALS') return jobsWithMaterials.has(job.id);
+    if (statusFilter === 'EXISTING') return job.job_exist === 'Yes';
+    if (statusFilter === 'ARCHIVED') return true;
+    return true;
+  });
+
   // ── Empty state ──
   if (!isLoading && jobs.length === 0 && !searchQuery) {
     return (
@@ -1602,6 +1619,28 @@ export default function JobsPanel() {
               ))}
             </div>
 
+            {/* Type tab: All / Work Orders / Quotes */}
+            <div className="flex gap-1 mb-3 p-1 rounded-lg bg-[var(--color-bg-secondary)] border border-[var(--color-border)]">
+              {([
+                { value: 'all',        label: 'All' },
+                { value: 'work_order', label: 'Work Orders' },
+                { value: 'quote',      label: 'Quotes' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setTypeTab(opt.value)}
+                  className={clsx(
+                    'flex-1 py-2 rounded-md text-xs font-medium transition-all text-center',
+                    typeTab === opt.value
+                      ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                      : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
             {/* Stat cards */}
             <div className="grid grid-cols-6 gap-2 mb-4">
               {[
@@ -1667,27 +1706,19 @@ export default function JobsPanel() {
             )}
             {isLoading ? (
               <SidebarSkeleton />
-            ) : jobs.filter((job) => {
-              if (statusFilter === 'UNASSIGNED') return job.status === 'UNASSIGNED';
-              if (statusFilter === 'ASSIGNED') return job.status === 'ASSIGNED' || job.status === 'IN_PROGRESS';
-              if (statusFilter === 'MATERIALS') return jobsWithMaterials.has(job.id);
-              if (statusFilter === 'EXISTING') return job.job_exist === 'Yes';
-              if (statusFilter === 'ARCHIVED') return true;
-              return true;
-            }).length === 0 ? (
+            ) : visibleJobs.length === 0 ? (
               <div className="text-center py-8">
                 <Search className="w-8 h-8 text-[var(--color-text-muted)] mx-auto mb-2" />
-                <p className="text-sm text-[var(--color-text-secondary)]">No jobs match your search</p>
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  {typeTab === 'quote'
+                    ? 'No quotes match your filters'
+                    : typeTab === 'work_order'
+                    ? 'No work orders match your filters'
+                    : 'No jobs match your search'}
+                </p>
               </div>
             ) : (
-              jobs.filter((job) => {
-                if (statusFilter === 'UNASSIGNED') return job.status === 'UNASSIGNED';
-                if (statusFilter === 'ASSIGNED') return job.status === 'ASSIGNED' || job.status === 'IN_PROGRESS';
-                if (statusFilter === 'MATERIALS') return jobsWithMaterials.has(job.id);
-                if (statusFilter === 'EXISTING') return job.job_exist === 'Yes';
-                if (statusFilter === 'ARCHIVED') return true;
-                return true;
-              }).map((job) => {
+              visibleJobs.map((job) => {
                 const isSelected = selectedJob?.id === job.id;
                 const t = trade(job.trade);
                 const p = priority(job.priority);
