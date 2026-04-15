@@ -408,12 +408,10 @@ export default function JobsPanel() {
   }, [selectedJob]);
 
   // ── Fetch jobs ──
-  const fetchJobs = useCallback(async (query = '', includeArchived = false) => {
+  // Always fetches both archived and non-archived; the ARCHIVED sidebar filter
+  // decides client-side which bucket to show.
+  const fetchJobs = useCallback(async (query = '') => {
     let q = supabase.from('jobs').select('*').order('created_at', { ascending: false });
-
-    if (!includeArchived) {
-      q = q.eq('is_archived', false);
-    }
 
     if (query.trim()) {
       q = q.or(
@@ -496,11 +494,6 @@ export default function JobsPanel() {
     init();
   }, [fetchJobs, fetchStats, fetchJobsWithMaterials]);
 
-  // ── Re-fetch when ARCHIVED filter toggled ──
-  useEffect(() => {
-    fetchJobs(searchQuery, statusFilter === 'ARCHIVED');
-  }, [statusFilter, fetchJobs, searchQuery]);
-
   // ── Fetch companies for dropdown ──
   useEffect(() => {
     const fetchCompanies = async () => {
@@ -536,7 +529,7 @@ export default function JobsPanel() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'jobs' },
         (payload) => {
-          fetchJobs(searchQuery, statusFilter === 'ARCHIVED');
+          fetchJobs(searchQuery);
           fetchStats();
           if (payload.eventType === 'INSERT') {
             const newJob = payload.new as Job;
@@ -1002,7 +995,7 @@ export default function JobsPanel() {
     setSearchQuery(value);
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     searchTimeoutRef.current = setTimeout(() => {
-      fetchJobs(value, statusFilter === 'ARCHIVED');
+      fetchJobs(value);
     }, 300);
   };
 
@@ -1101,11 +1094,14 @@ export default function JobsPanel() {
   };
   const visibleJobs = jobs.filter((job) => {
     if (!matchesTypeTab(job)) return false;
+    // ARCHIVED is a separate "folder": shows only archived jobs; every other
+    // view excludes archived jobs so they don't clutter the dispatcher's list.
+    if (statusFilter === 'ARCHIVED') return job.is_archived === true;
+    if (job.is_archived) return false;
     if (statusFilter === 'UNASSIGNED') return job.status === 'UNASSIGNED';
     if (statusFilter === 'ASSIGNED') return job.status === 'ASSIGNED' || job.status === 'IN_PROGRESS';
     if (statusFilter === 'MATERIALS') return jobsWithMaterials.has(job.id);
     if (statusFilter === 'EXISTING') return job.job_exist === 'Yes';
-    if (statusFilter === 'ARCHIVED') return true;
     return true;
   });
 
