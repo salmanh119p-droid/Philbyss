@@ -18,7 +18,7 @@ import { supabase } from '@/lib/supabase';
 import { Engineer } from '@/types';
 
 // ── Constants ──
-const ADMIN_FEE = 15;
+const ADMIN_FEE = 25;
 
 const parseFineAmount = (amount: string): number => {
   const cleaned = amount.replace(/[£,\s]/g, '');
@@ -258,7 +258,7 @@ export default function VanFinesPage() {
         setFines((prev) => [result, ...prev]);
         const total = parseFineAmount(result.fine_amount) + ADMIN_FEE;
         showToast(
-          `Fine processed: ${result.vehicle_reg} — ${result.assigned_engineer} — ${result.fine_amount} + £15 admin = £${total.toFixed(2)}`,
+          `Fine processed: ${result.vehicle_reg} — ${result.assigned_engineer} — ${result.fine_amount} + £${ADMIN_FEE} admin = £${total.toFixed(2)}`,
           'success'
         );
       }
