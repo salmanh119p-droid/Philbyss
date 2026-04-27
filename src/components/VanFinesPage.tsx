@@ -46,7 +46,6 @@ interface VanFine {
   image_url: string;
   image_path?: string;
   status: string;
-  admin_fee?: number | null;
   created_at?: string;
 }
 
@@ -123,8 +122,8 @@ export default function VanFinesPage() {
       if (existing) {
         existing.ticketCount += 1;
         existing.totalFineAmount += fineAmount;
-        existing.totalAdminFees += (fine.admin_fee ?? ADMIN_FEE);
-        existing.totalDue += fineAmount + (fine.admin_fee ?? ADMIN_FEE);
+        existing.totalAdminFees += ADMIN_FEE;
+        existing.totalDue += fineAmount + ADMIN_FEE;
         existing.vehicleRegs.add(fine.vehicle_reg);
         if (fine.issue_date > existing.latestDate) {
           existing.latestDate = fine.issue_date;
@@ -134,8 +133,8 @@ export default function VanFinesPage() {
           engineer: fine.assigned_engineer || 'UNKNOWN',
           ticketCount: 1,
           totalFineAmount: fineAmount,
-          totalAdminFees: fine.admin_fee ?? ADMIN_FEE,
-          totalDue: fineAmount + (fine.admin_fee ?? ADMIN_FEE),
+          totalAdminFees: ADMIN_FEE,
+          totalDue: fineAmount + ADMIN_FEE,
           vehicleRegs: new Set([fine.vehicle_reg]),
           latestDate: fine.issue_date || '',
         });
@@ -689,11 +688,11 @@ export default function VanFinesPage() {
                           </td>
                           {/* Admin Fee */}
                           <td className="py-3 px-3 text-amber-400">
-                            £{(fine.admin_fee ?? ADMIN_FEE).toFixed(2)}
+                            £{ADMIN_FEE.toFixed(2)}
                           </td>
                           {/* Total Due */}
                           <td className="py-3 px-3 font-bold text-[var(--color-text-primary)]">
-                            £{(parseFineAmount(isEditing ? (editFine.fine_amount || '0') : fine.fine_amount) + (fine.admin_fee ?? ADMIN_FEE)).toFixed(2)}
+                            £{(parseFineAmount(isEditing ? (editFine.fine_amount || '0') : fine.fine_amount) + ADMIN_FEE).toFixed(2)}
                           </td>
                           {/* Reference */}
                           <td className="py-3 px-3 text-[var(--color-text-muted)] font-mono text-xs">
