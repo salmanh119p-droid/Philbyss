@@ -46,6 +46,7 @@ interface VanFine {
   image_url: string;
   image_path?: string;
   status: string;
+  admin_fee?: number | null;
   created_at?: string;
 }
 
