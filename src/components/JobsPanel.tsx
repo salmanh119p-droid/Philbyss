@@ -23,6 +23,7 @@ import {
   Pencil,
   Check,
   ExternalLink,
+  Trash2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { supabase } from '@/lib/supabase';
@@ -1081,6 +1082,41 @@ export default function JobsPanel() {
     setShowDetail(true); // for mobile
   };
 
+  // ── Delete job ──
+  const handleDeleteJob = async (job: Job) => {
+    const confirmed = window.confirm(
+      `Delete job ${job.job_ref}?\n\n"${job.job_title}"\n\nThis cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    const { error: matErr } = await supabase.from('materials').delete().eq('job_id', job.id);
+    if (matErr) {
+      console.error('Error deleting job materials:', matErr);
+      showToast('Failed to delete job materials');
+      return;
+    }
+
+    const { error } = await supabase.from('jobs').delete().eq('id', job.id);
+    if (error) {
+      console.error('Error deleting job:', error);
+      showToast('Failed to delete job');
+      return;
+    }
+
+    setJobs((prev) => prev.filter((j) => j.id !== job.id));
+    setJobsWithMaterials((prev) => {
+      const next = new Set(prev);
+      next.delete(job.id);
+      return next;
+    });
+    if (selectedJob?.id === job.id) {
+      setSelectedJob(null);
+      setShowDetail(false);
+    }
+    fetchStats();
+    showToast(`✓ Job ${job.job_ref} deleted`);
+  };
+
   const trade = (t: string) => TRADE_CONFIG[t] || TRADE_CONFIG.Other;
   const priority = (p: string) => PRIORITY_CONFIG[p] || PRIORITY_CONFIG.MEDIUM;
   const status = (s: string) => STATUS_CONFIG[s] || STATUS_CONFIG.UNASSIGNED;
@@ -1741,9 +1777,32 @@ export default function JobsPanel() {
                           <span className="text-[10px]">{p.dot}</span> {job.priority}
                         </span>
                       </div>
-                      <span className="text-xs text-[var(--color-text-muted)]">
-                        {formatTime(job.date_raised)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-[var(--color-text-muted)]">
+                          {formatTime(job.date_raised)}
+                        </span>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Delete job ${job.job_ref}`}
+                          title="Delete job"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            handleDeleteJob(job);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              handleDeleteJob(job);
+                            }
+                          }}
+                          className="p-1 rounded text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
                     </div>
 
                     {/* Title */}
