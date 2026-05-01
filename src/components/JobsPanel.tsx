@@ -605,7 +605,7 @@ export default function JobsPanel() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               staff_uuid: engineer.sm8_uuid,
-              days: 7,
+              days: 28,
               start_time: '08:00',
               end_time: '18:00',
               job_ref: job.job_ref,
