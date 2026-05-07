@@ -23,6 +23,7 @@ import {
   X,
   Package,
   ClipboardCheck,
+  Inbox,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import StatCard from '@/components/StatCard';
@@ -42,8 +43,9 @@ import ManageLeavePage from '@/components/ManageLeavePage';
 import VanFinesPage from '@/components/VanFinesPage';
 import MaterialsTracking from '@/components/MaterialsTracking';
 import TenantsConfirmation from '@/components/TenantsConfirmation';
+import LeadsEnquiriesPage from '@/components/LeadsEnquiriesPage';
 
-type TabType = 'overview' | 'invoices' | 'payroll' | 'materials' | 'materials-tracking' | 'jobs' | 'leave' | 'fines' | 'tenants-confirmation';
+type TabType = 'overview' | 'invoices' | 'payroll' | 'materials' | 'materials-tracking' | 'jobs' | 'leave' | 'fines' | 'tenants-confirmation' | 'leads';
 
 export default function DashboardClient() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -125,6 +127,7 @@ export default function DashboardClient() {
     { id: 'leave' as TabType, label: 'Manage Leave', icon: Calendar },
     { id: 'fines' as TabType, label: 'Van Fines', icon: Car },
     { id: 'tenants-confirmation' as TabType, label: 'Tenants Confirmation', icon: ClipboardCheck },
+    { id: 'leads' as TabType, label: 'Leads / Enquiries', icon: Inbox },
   ];
 
   if (isLoading) {
@@ -464,6 +467,10 @@ export default function DashboardClient() {
 
         {activeTab === 'tenants-confirmation' && (
           <TenantsConfirmation />
+        )}
+
+        {activeTab === 'leads' && (
+          <LeadsEnquiriesPage />
         )}
       </main>
 

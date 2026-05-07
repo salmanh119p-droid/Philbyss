@@ -136,6 +136,97 @@ export async function updateJobCost(
   return updateSheetCell(spreadsheetId, sheetName, rowIndex, 'D', newCost);
 }
 
+// Get metadata for the first sheet (tab) in a spreadsheet.
+// Returns the tab title and its numeric sheetId (gid) — needed for row deletion.
+export async function getFirstSheetMeta(
+  spreadsheetId: string
+): Promise<{ title: string; sheetId: number }> {
+  const sheets = await getSheetsClient();
+
+  const response = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: 'sheets.properties(sheetId,title,index)',
+  });
+
+  const list = response.data.sheets || [];
+  const first = list.find((s) => s.properties?.index === 0) || list[0];
+  if (!first || !first.properties) {
+    throw new Error(`No sheets found in spreadsheet ${spreadsheetId}`);
+  }
+
+  return {
+    title: first.properties.title || '',
+    sheetId: first.properties.sheetId ?? 0,
+  };
+}
+
+// Append a new row to the bottom of a sheet.
+export async function appendSheetRow(
+  spreadsheetId: string,
+  sheetName: string,
+  values: (string | number)[]
+): Promise<boolean> {
+  const sheets = await getSheetsClient();
+
+  try {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: `'${sheetName}'`,
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: { values: [values] },
+    });
+    return true;
+  } catch (error) {
+    console.error(`Failed to append row to ${sheetName}:`, error);
+    return false;
+  }
+}
+
+// Delete a row from a sheet. rowIndex is 1-indexed (matches sheet row numbers).
+export async function deleteSheetRow(
+  spreadsheetId: string,
+  sheetGid: number,
+  rowIndex: number
+): Promise<boolean> {
+  const sheets = await getSheetsClient();
+
+  try {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId: sheetGid,
+                dimension: 'ROWS',
+                startIndex: rowIndex - 1,
+                endIndex: rowIndex,
+              },
+            },
+          },
+        ],
+      },
+    });
+    return true;
+  } catch (error) {
+    console.error(`Failed to delete row ${rowIndex} from sheet ${sheetGid}:`, error);
+    return false;
+  }
+}
+
+// Convert a 0-based column index to a spreadsheet column letter (A, B, ..., Z, AA, AB, ...).
+export function columnIndexToLetter(index: number): string {
+  let result = '';
+  let n = index;
+  while (n >= 0) {
+    result = String.fromCharCode((n % 26) + 65) + result;
+    n = Math.floor(n / 26) - 1;
+  }
+  return result;
+}
+
 // Utility to parse currency strings like "£1,234.56" or "1234.56"
 export function parseCurrency(value: string | number | undefined): number {
   if (typeof value === 'number') return value;
