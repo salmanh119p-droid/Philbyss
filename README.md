@@ -100,7 +100,11 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
    - `INVOICE_SHEET_ID`
    - `PAYSLIP_SHEET_ID`
    - `ENGINEER_RATES_SHEET_ID`
+   - `LEADS_CHATBOT_SHEET_ID` — spreadsheet ID for website chatbot leads (Leads / Enquiries section)
+   - `LEADS_FORM_SHEET_ID` — spreadsheet ID for form leads (Leads / Enquiries section)
 5. Deploy!
+
+> **Note:** The service account from `GOOGLE_SERVICE_ACCOUNT_KEY` must be shared as **Editor** on both lead spreadsheets so the dashboard can add, edit, and delete rows. The Leads / Enquiries section reads the first tab of each sheet and treats row 1 as column headers.
 
 ## Spreadsheet Structure
 
