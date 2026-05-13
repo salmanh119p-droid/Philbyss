@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  // Only check auth for dashboard routes
-  if (request.nextUrl.pathname.startsWith('/dashboard')) {
+  const { pathname } = request.nextUrl;
+  if (pathname.startsWith('/dashboard') || pathname.startsWith('/reviews')) {
     const authCookie = request.cookies.get('philbys_dashboard_auth');
-    
+
     if (!authCookie) {
       return NextResponse.redirect(new URL('/', request.url));
     }
@@ -15,5 +15,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*'],
+  matcher: ['/dashboard/:path*', '/reviews/:path*'],
 };

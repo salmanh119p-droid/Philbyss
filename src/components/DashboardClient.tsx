@@ -24,6 +24,7 @@ import {
   Package,
   ClipboardCheck,
   Inbox,
+  Star,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import StatCard from '@/components/StatCard';
@@ -128,6 +129,10 @@ export default function DashboardClient() {
     { id: 'fines' as TabType, label: 'Van Fines', icon: Car },
     { id: 'tenants-confirmation' as TabType, label: 'Tenants Confirmation', icon: ClipboardCheck },
     { id: 'leads' as TabType, label: 'Leads / Enquiries', icon: Inbox },
+  ];
+
+  const externalLinks = [
+    { href: '/reviews', label: 'Review Performance', icon: Star },
   ];
 
   if (isLoading) {
@@ -265,6 +270,23 @@ export default function DashboardClient() {
                 )}
               </button>
             ))}
+            {externalLinks.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-[var(--color-border)] space-y-1">
+                {externalLinks.map((link) => (
+                  <button
+                    key={link.href}
+                    onClick={() => {
+                      setDrawerOpen(false);
+                      router.push(link.href);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+                  >
+                    <link.icon className="w-5 h-5 flex-shrink-0" />
+                    {link.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </nav>
 
