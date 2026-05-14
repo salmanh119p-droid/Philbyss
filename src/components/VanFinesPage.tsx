@@ -19,8 +19,25 @@ import { Engineer } from '@/types';
 
 // ── Constants ──
 const ADMIN_FEE = 25;
+const PLACEHOLDER = '—';
 
-const parseFineAmount = (amount: string): number => {
+const safeText = (value: string | null | undefined): string =>
+  value && value.trim() !== '' ? value : PLACEHOLDER;
+
+const safeFineAmount = (value: string | null | undefined): string => {
+  if (!value || value.trim() === '') return PLACEHOLDER;
+  if (value.includes('£')) return value;
+  const n = Number(value);
+  return Number.isFinite(n) ? `£${n.toFixed(2)}` : value;
+};
+
+const safeDate = (value: string | null | undefined): string => {
+  if (!value || value.trim() === '') return PLACEHOLDER;
+  return value;
+};
+
+const parseFineAmount = (amount: string | null | undefined): number => {
+  if (!amount || amount.trim() === '') return 0;
   const cleaned = amount.replace(/[£,\s]/g, '');
   const num = parseFloat(cleaned);
   return isNaN(num) ? 0 : num;
@@ -38,14 +55,14 @@ const SUPABASE_HEADERS = {
 
 interface VanFine {
   id?: string;
-  vehicle_reg: string;
-  fine_amount: string;
-  issue_date: string;
-  reference_number: string;
-  assigned_engineer: string;
-  image_url: string;
-  image_path?: string;
-  status: string;
+  vehicle_reg: string | null;
+  fine_amount: string | null;
+  issue_date: string | null;
+  reference_number: string | null;
+  assigned_engineer: string | null;
+  image_url: string | null;
+  image_path?: string | null;
+  status: string | null;
   created_at?: string;
 }
 
@@ -118,15 +135,16 @@ export default function VanFinesPage() {
       const key = (fine.assigned_engineer || 'UNKNOWN').toUpperCase();
       const existing = map.get(key);
       const fineAmount = parseFineAmount(fine.fine_amount);
+      const issueDate = fine.issue_date || '';
 
       if (existing) {
         existing.ticketCount += 1;
         existing.totalFineAmount += fineAmount;
         existing.totalAdminFees += ADMIN_FEE;
         existing.totalDue += fineAmount + ADMIN_FEE;
-        existing.vehicleRegs.add(fine.vehicle_reg);
-        if (fine.issue_date > existing.latestDate) {
-          existing.latestDate = fine.issue_date;
+        if (fine.vehicle_reg) existing.vehicleRegs.add(fine.vehicle_reg);
+        if (issueDate > existing.latestDate) {
+          existing.latestDate = issueDate;
         }
       } else {
         map.set(key, {
@@ -135,8 +153,8 @@ export default function VanFinesPage() {
           totalFineAmount: fineAmount,
           totalAdminFees: ADMIN_FEE,
           totalDue: fineAmount + ADMIN_FEE,
-          vehicleRegs: new Set([fine.vehicle_reg]),
-          latestDate: fine.issue_date || '',
+          vehicleRegs: new Set(fine.vehicle_reg ? [fine.vehicle_reg] : []),
+          latestDate: issueDate,
         });
       }
     }
@@ -258,7 +276,7 @@ export default function VanFinesPage() {
         setFines((prev) => [result, ...prev]);
         const total = parseFineAmount(result.fine_amount) + ADMIN_FEE;
         showToast(
-          `Fine processed: ${result.vehicle_reg} — ${result.assigned_engineer} — ${result.fine_amount} + £${ADMIN_FEE} admin = £${total.toFixed(2)}`,
+          `Fine processed: ${safeText(result.vehicle_reg)} — ${safeText(result.assigned_engineer)} — ${safeFineAmount(result.fine_amount)} + £${ADMIN_FEE} admin = £${total.toFixed(2)}`,
           'success'
         );
       }
@@ -622,7 +640,7 @@ export default function VanFinesPage() {
                                 className="input text-sm w-28"
                               />
                             ) : (
-                              fine.issue_date || '—'
+                              safeDate(fine.issue_date)
                             )}
                           </td>
                           {/* Reg */}
@@ -636,7 +654,7 @@ export default function VanFinesPage() {
                               />
                             ) : (
                               <span className="font-mono font-semibold text-[var(--color-text-primary)]">
-                                {fine.vehicle_reg}
+                                {safeText(fine.vehicle_reg)}
                               </span>
                             )}
                           </td>
@@ -664,7 +682,7 @@ export default function VanFinesPage() {
                                     : 'text-[var(--color-text-primary)]'
                                 )}
                               >
-                                {fine.assigned_engineer}
+                                {safeText(fine.assigned_engineer)}
                                 {fine.assigned_engineer === 'UNKNOWN' && (
                                   <span className="ml-1 text-[10px] text-amber-400/60">
                                     (not matched)
@@ -683,7 +701,7 @@ export default function VanFinesPage() {
                                 className="input text-sm w-24"
                               />
                             ) : (
-                              <span className="font-semibold text-red-400">{fine.fine_amount}</span>
+                              <span className="font-semibold text-red-400">{safeFineAmount(fine.fine_amount)}</span>
                             )}
                           </td>
                           {/* Admin Fee */}
@@ -704,7 +722,7 @@ export default function VanFinesPage() {
                                 className="input text-sm w-32"
                               />
                             ) : (
-                              fine.reference_number || '—'
+                              safeText(fine.reference_number)
                             )}
                           </td>
                           {/* Status */}
@@ -863,7 +881,7 @@ export default function VanFinesPage() {
                         {Array.from(row.vehicleRegs).join(', ')}
                       </td>
                       <td className="py-3 px-3 text-[var(--color-text-secondary)]">
-                        {row.latestDate || '—'}
+                        {safeDate(row.latestDate)}
                       </td>
                     </tr>
                   ))}
