@@ -12,6 +12,7 @@ import {
   Loader2,
   ExternalLink,
   Users,
+  Search,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { supabase } from '@/lib/supabase';
@@ -95,6 +96,11 @@ export default function VanFinesPage() {
   const [editingFineId, setEditingFineId] = useState<string | null>(null);
   const [editFine, setEditFine] = useState<Partial<VanFine>>({});
 
+  // Fine filters
+  const [filterEngineer, setFilterEngineer] = useState('');
+  const [filterDate, setFilterDate] = useState('');
+  const [filterReg, setFilterReg] = useState('');
+
   // Manage Vehicles state
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(true);
@@ -118,6 +124,30 @@ export default function VanFinesPage() {
     vehicles.forEach((v) => { if (v.engineer_name) names.add(v.engineer_name); });
     return Array.from(names).sort();
   })();
+
+  // ── Filtered fines ──
+  const filteredFines = useMemo(() => {
+    const eng = filterEngineer.trim().toLowerCase();
+    const date = filterDate.trim().toLowerCase();
+    const reg = filterReg.trim().toLowerCase();
+    if (!eng && !date && !reg) return fines;
+    return fines.filter((f) => {
+      if (eng && !(f.assigned_engineer || '').toLowerCase().includes(eng)) return false;
+      if (date && !(f.issue_date || '').toLowerCase().includes(date)) return false;
+      if (reg && !(f.vehicle_reg || '').toLowerCase().includes(reg)) return false;
+      return true;
+    });
+  }, [fines, filterEngineer, filterDate, filterReg]);
+
+  const hasActiveFilters = Boolean(
+    filterEngineer.trim() || filterDate.trim() || filterReg.trim()
+  );
+
+  const clearFilters = () => {
+    setFilterEngineer('');
+    setFilterDate('');
+    setFilterReg('');
+  };
 
   // ── Engineer totals aggregation ──
   const engineerTotals = useMemo(() => {
@@ -570,9 +600,73 @@ export default function VanFinesPage() {
 
           {/* Fines Table */}
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-3">
-              Processed Fines ({fines.length})
-            </p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">
+                Processed Fines ({hasActiveFilters ? `${filteredFines.length} of ${fines.length}` : fines.length})
+              </p>
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                >
+                  <X className="w-3 h-3" />
+                  Clear filters
+                </button>
+              )}
+            </div>
+
+            {/* Filters */}
+            {fines.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-1 block">
+                    Engineer
+                  </label>
+                  <select
+                    value={filterEngineer}
+                    onChange={(e) => setFilterEngineer(e.target.value)}
+                    className="input text-sm w-full"
+                  >
+                    <option value="">All engineers</option>
+                    {engineerNameOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-1 block">
+                    Date
+                  </label>
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-text-muted)] pointer-events-none" />
+                    <input
+                      type="text"
+                      value={filterDate}
+                      onChange={(e) => setFilterDate(e.target.value)}
+                      placeholder="e.g. 2026-05 or 15/05"
+                      className="input text-sm w-full pl-8"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold mb-1 block">
+                    Vehicle Reg
+                  </label>
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-text-muted)] pointer-events-none" />
+                    <input
+                      type="text"
+                      value={filterReg}
+                      onChange={(e) => setFilterReg(e.target.value.toUpperCase())}
+                      placeholder="e.g. LV25HLD"
+                      className="input text-sm w-full pl-8 uppercase font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {finesLoading ? (
               <div className="flex items-center justify-center py-12">
@@ -584,6 +678,19 @@ export default function VanFinesPage() {
                 <p className="text-sm text-[var(--color-text-muted)]">
                   No fines uploaded yet
                 </p>
+              </div>
+            ) : filteredFines.length === 0 ? (
+              <div className="card text-center py-8">
+                <Search className="w-8 h-8 text-[var(--color-text-muted)] mx-auto mb-2" />
+                <p className="text-sm text-[var(--color-text-muted)]">
+                  No fines match the current filters
+                </p>
+                <button
+                  onClick={clearFilters}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors mt-2"
+                >
+                  Clear filters
+                </button>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -623,7 +730,7 @@ export default function VanFinesPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {fines.map((fine, i) => {
+                    {filteredFines.map((fine, i) => {
                       const isEditing = editingFineId === fine.id;
                       return (
                         <tr
