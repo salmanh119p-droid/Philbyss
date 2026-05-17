@@ -25,6 +25,7 @@ import {
   ClipboardCheck,
   Inbox,
   Star,
+  HardHat,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import StatCard from '@/components/StatCard';
@@ -132,6 +133,7 @@ export default function DashboardClient() {
   ];
 
   const externalLinks = [
+    { href: '/engineers', label: 'Engineers', icon: HardHat },
     { href: '/reviews', label: 'Review Performance', icon: Star },
   ];
 
