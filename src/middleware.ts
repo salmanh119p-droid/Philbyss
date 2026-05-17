@@ -3,7 +3,11 @@ import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (pathname.startsWith('/dashboard') || pathname.startsWith('/reviews')) {
+  if (
+    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/reviews') ||
+    pathname.startsWith('/engineers')
+  ) {
     const authCookie = request.cookies.get('philbys_dashboard_auth');
 
     if (!authCookie) {
@@ -15,5 +19,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/reviews/:path*'],
+  matcher: ['/dashboard/:path*', '/reviews/:path*', '/engineers/:path*'],
 };
